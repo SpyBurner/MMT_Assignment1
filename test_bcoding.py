@@ -7,3 +7,6 @@ with open('sample.torrent', 'rb') as f:
 # # decoding from (byte)strings:
 # one = bdecode(b'i1e')
 # two = bdecode('3:two')
+
+# test = bdecode(b'l4:dir14:dir28:file.exte')
+# print(test)
