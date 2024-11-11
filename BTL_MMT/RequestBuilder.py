@@ -9,7 +9,6 @@ class TrackerRequestBuilder():
     def __init__(self):
         self.info_hash = None
         self.peer_id = None
-        self.peer_ip = None
         self.port = None
         self.uploaded = None
         self.downloaded = None
@@ -28,10 +27,6 @@ class TrackerRequestBuilder():
         self.peer_id = peer_id
         return self
 
-    def SetPeerIP(self, peer_id):
-        self.peer_id = peer_id
-        return self
-    
     def SetPort(self, port):
         self.port = port
         return self

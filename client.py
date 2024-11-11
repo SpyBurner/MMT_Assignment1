@@ -1,6 +1,7 @@
 import socket
 import time
 import argparse
+import bcoding
 
 from threading import Thread
 
@@ -13,8 +14,20 @@ def new_connection(tid, host, port):
     #request = fhasdlkjfhalsdfj.Build()
     #request_encode = bcoding.bencode(request)
     
-    sendData = request_encode.encode("utf-8")
-    client_socket.send(sendData)
+    sample_dict = {
+        'info': {
+            'piece length': 256,
+            'pieces': b'1234567890abcdef',
+            'name': 'sample.txt',
+            'length': 1024
+        },
+        'announce_list': [
+            {'ip': ' ', 'port': 22236}
+        ]
+    }
+    
+    request_encode = bcoding.bencode(sample_dict)        
+    client_socket.send(request_encode)
 
 
 def connect_server(threadnum, host, port):
