@@ -29,6 +29,7 @@ def MetainfoBuilder():
             #? files: [{'length': None, 'path': None}]
             'files' : []
         }
+        #? announce_list: [{'ip': None, 'port': None}]
         self.announce_list = []
         
         #? Example

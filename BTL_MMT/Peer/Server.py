@@ -7,7 +7,7 @@ import os
 import time
 import bcoding
 import hashlib
-import MetainfoBrowser as mib
+import BTL_MMT.Metainfo as mib
 
 def GetHostIP():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -27,34 +27,113 @@ def GetInfoHash(metainfoPath):
     info = metainfo['info']
     return hashlib.sha1(bcoding.bencode(info)).hexdigest()
 
+class ServerRequester(threading.Thread):
+    def __init__(self, server, trackerIP, trackerPort, request):
+        threading.Thread.__init__(self, daemon=True)
+        self.server = server
+        self.trackerIP = trackerIP
+        self.trackerPort = trackerPort
+        self.request = request
+        
+        self.callback = None
+    
+    def SetCallback(self, callback):
+        self.callback = callback
+    
+    def run(self):
+        #? Send request to tracker
+        response = ""
+        
+        self.callback(response)
+
 #? Announce all trackers about the peer's existence.
 class ServerRegularAnouncer(threading.Thread):
-    def __init__(self, peer_id, peer_ip, peer_port, interval):
+    def __init__(self, server, peer_id, peer_ip, peer_port, interval):
         threading.Thread.__init__(self, daemon=True)
+        self.server = server;
         self.peer_id = peer_id
         self.peer_ip = peer_ip
         self.peer_port = peer_port
+        
         self.interval = interval
     
     def run(self):
-        #TODO Send start
+        #? Send start request to all trackers
+        startRequest = rb.TrackerRequestBuilder()
+        startRequest.SetPeerID(self.peer_id)
+        startRequest.SetPeerIP(self.peer_ip)
+        startRequest.SetPort(self.peer_port)
         metainfos = mib.GetAll(peer_setting.METAINFO_FILE_PATH)
-        
-        for metainfo in metainfos:
-            startRequest = rb.TrackerRequestBuilder()
+        for metainfo in metainfos:    
+            metainfo_decode = bcoding.bdecode(open(metainfo, 'rb'))
             
-            startRequest.SetPeerID(self.peer_id)
-            startRequest.SetPeerIp
+            startRequest.SetUploaded(0)
             
-            info_hash = hashlib.sha1(bcoding.bencode(metainfo['info'])).hexdigest()       
+            #TODO Change after local file mapping implementation
+            startRequest.SetDownloaded(0)
+            startRequest.SetLeft(0)
+            
+            startRequest.SetEvent('started')
+            startRequest.SetCompact(True)
+            startRequest.SetTrackerId(None)        
+                        
+            info_hash = hashlib.sha1(metainfo_decode['info']).hexdigest()       
             startRequest.SetInfoHash(info_hash)
             
-        
+            request = startRequest.Build()
+            
+            for announce in metainfo['announce_list']:
+                trackerIP = announce['ip']
+                trackerPort = announce['port']
                 
+                requester = ServerRequester(self.server, trackerIP, trackerPort, request)
+                #? Set callback to store tracker_id
+                def callback(response):
+                    response_decode = bcoding.bdecode(response)
+                    tracker_id = response_decode['tracker_id']
+                    self.server.AddTrackerID(info_hash, tracker_id)
+                    
+                requester.SetCallback(lambda response: callback(response))
+                
+                requester.start()
         
-        #TODO Then send unspecified for every interval
+        #? Regularly announce to all trackers
+        lastAnnounce = time.time()
+        while True:
+            if (time.time() - lastAnnounce < self.interval):
+                continue
+            
+            metainfos = mib.GetAll(peer_setting.METAINFO_FILE_PATH)
+            regularRequest = rb.TrackerRequestBuilder()
+            regularRequest.SetPeerID(self.peer_id)
+            regularRequest.SetPeerIP(self.peer_ip)
+            regularRequest.SetPort(self.peer_port)
+            
+            for metainfo in metainfos:
+                info_hash = hashlib.sha1(bcoding.bencode(os.open)).hexdigest()
+                tracker_id = self.server.trackerIDTable[info_hash]
+                
+                regularRequest.SetInfoHash(info_hash)
+                regularRequest.SetTrackerId(tracker_id)
+                
+                #TODO Change after local file mapping implementation
+                regularRequest.SetUploaded(0)
+                regularRequest.SetDownloaded(0)
+                regularRequest.SetLeft(0)
+                
+                regularRequest.SetEvent(None)
+                regularRequest.SetCompact(True)
+                
+                request = regularRequest.Build()
+                
+                for announce in metainfo['announce_list']:
+                    trackerIP = announce['ip']
+                    trackerPort = announce['port']
+                    
+                    requester = ServerRequester(self.server, trackerIP, trackerPort, request)
+                    requester.start()    
         
-        pass
+            
 
 class ServerUploader(threading.Thread):
     def __init__(self, server, sock, addr):
@@ -112,8 +191,10 @@ class Server():
         self.peerID = str(self.ip) + ":" + str(self.port) + time.strftime("%Y%m%d%H%M%S")
         
         # Start regular announcer
-        regularAnouncer = ServerRegularAnouncer(self.peerID, self.ip, self.port, peer_setting.PEER_SERVER_ANNOUNCE_INTERVAL)
+        regularAnouncer = ServerRegularAnouncer(self, self.peerID, self.ip, self.port, peer_setting.PEER_SERVER_ANNOUNCE_INTERVAL)
         regularAnouncer.start()
+        
+        self.trackerIDTable = {}
     
     def Start(self):
         connectionLoopHandler = ServerConnectionLoopHandler(self)
@@ -128,6 +209,9 @@ class Server():
         connectionLoopHandler.join()
         
         self.serverSocket.close()
+    
+    def AddTrackerID(self, info_hash, tracker_id):
+        self.trackerIDTable[info_hash] = tracker_id
 
 def Start():
     server = Server()
