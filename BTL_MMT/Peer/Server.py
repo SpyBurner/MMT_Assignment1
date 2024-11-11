@@ -1,13 +1,18 @@
 import threading
+import os
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 import socket
 import peer_setting
 import Client
-import BTL_MMT.RequestBuilder as rb
-import os
+import RequestBuilder as rb
 import time
 import bcoding
 import hashlib
 import BTL_MMT.Metainfo as mib
+import global_setting
 
 def GetHostIP():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -44,17 +49,28 @@ class ServerRequester(threading.Thread):
         #? Send request to tracker
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((self.trackerIP, self.trackerPort))
-        sock.sendall(self.request)
+        
+        #? Add port to request after the connection is established
+        self.request['port'] = self.server.port
+        
+        sock.sendall(bcoding.bencode(self.request))
         
         #? Receive response from tracker
         response = sock.recv(peer_setting.PEER_SERVER_MAX_RESPONSE_SIZE)
         sock.close()
         
+        #? Store info_hash for each tracker_id
+        
+        response_decode = bcoding.bdecode(response)
+        self.server.AddTrackerID(self.trackerIP, self.trackerPort, response_decode['tracker_id'])
+        
+        
+        #? Call callback if it exists
         if self.callback:
             self.callback(response)
 
 #? Announce all trackers about the peer's existence.
-class ServerRegularAnouncer(threading.Thread):
+class ServerRegularAnnouncer(threading.Thread):
     def __init__(self, server, peer_id, peer_ip, peer_port, interval):
         threading.Thread.__init__(self, daemon=True)
         self.server = server;
@@ -65,18 +81,11 @@ class ServerRegularAnouncer(threading.Thread):
         self.interval = interval
     
     def run(self):
-        
-        #? Set callback to store tracker_id
-        def StoreTrackerID(response):
-            response_decode = bcoding.bdecode(response)
-            tracker_id = response_decode['tracker_id']
-            self.server.AddTrackerID(info_hash, tracker_id)
-        
+           
         #? Send start request to all trackers, runs once
         #? Only handle files already downloaded at startup, for newly uploaded files are handled in ClientUploader
         startRequest = rb.TrackerRequestBuilder()
         startRequest.SetPeerID(self.peer_id)
-        startRequest.SetPeerIP(self.peer_ip)
         startRequest.SetPort(self.peer_port)
         metainfos = mib.GetAll(peer_setting.METAINFO_FILE_PATH)
         for metainfo in metainfos:    
@@ -95,7 +104,6 @@ class ServerRegularAnouncer(threading.Thread):
             startRequest.SetCompact(True)
             startRequest.SetTrackerId(None)        
                         
-            
             request = startRequest.Build()
             
             for announce in metainfo['announce_list']:
@@ -103,8 +111,6 @@ class ServerRegularAnouncer(threading.Thread):
                 trackerPort = announce['port']
                 
                 requester = ServerRequester(self.server, trackerIP, trackerPort, request)
-                    
-                requester.SetCallback(lambda response: StoreTrackerID(response))
                 
                 requester.start()
         
@@ -112,7 +118,6 @@ class ServerRegularAnouncer(threading.Thread):
         lastAnnounce = time.time()
         regularRequest = rb.TrackerRequestBuilder()
         regularRequest.SetPeerID(self.peer_id)
-        regularRequest.SetPeerIP(self.peer_ip)
         regularRequest.SetPort(self.peer_port)
         while True:
             #? Check if the interval has passed
@@ -145,11 +150,8 @@ class ServerRegularAnouncer(threading.Thread):
                     trackerPort = announce['port']
                     
                     requester = ServerRequester(self.server, trackerIP, trackerPort, request)
-                    requester.SetCallback(lambda response: StoreTrackerID(response))
                     requester.start()
         
-            
-
 class ServerUploader(threading.Thread):
     def __init__(self, server, sock, addr):
         threading.Thread.__init__(self, daemon=True)
@@ -158,7 +160,9 @@ class ServerUploader(threading.Thread):
         self.addr = addr
         
     def run(self):
-        #TODO Run when a peer requests to download a piece of file.
+        # TODO Receive request from peer client and respond with the right piece
+        #? Receive request from peer client
+        request = self.sock.recv(peer_setting.PEER_CLIENT_MAX_REQUEST_SIZE)
         
         pass
 
@@ -171,6 +175,7 @@ class ServerConnectionLoopHandler(threading.Thread):
         
         
     def start(self):
+        print("ServerConnectionLoopHandler started.")
         #? Stop the loop when not isRunning during a socket timeout
         while self.isRunning:
             try:
@@ -186,7 +191,7 @@ class ServerConnectionLoopHandler(threading.Thread):
         #? Fake client to break the serverSocket.accept() loop
         fake_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         fake_client.connect((self.server.ip, self.server.port))
-        fake_client.close()        
+        fake_client.close()
         
 class Server():
     def __init__(self):
@@ -195,7 +200,7 @@ class Server():
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serverSocket.bind((self.ip, self.port))
         
-        self.serverSocket.timeout = peer_setting.PEER_SERVER_TIMEOUT
+        self.serverSocket.settimeout(peer_setting.PEER_SERVER_TIMEOUT)
         
         print("Listening on: {}:{}".format(self.ip, self.port))
         
@@ -205,10 +210,14 @@ class Server():
         self.peerID = str(self.ip) + ":" + str(self.port) + time.strftime("%Y%m%d%H%M%S")
         
         # Start regular announcer
-        regularAnouncer = ServerRegularAnouncer(self, self.peerID, self.ip, self.port, peer_setting.PEER_SERVER_ANNOUNCE_INTERVAL)
+        regularAnouncer = ServerRegularAnnouncer(self, self.peerID, self.ip, self.port, peer_setting.ANNOUNCE_INTERVAL)
         regularAnouncer.start()
         
-        self.trackerIDTable = {}
+        #? Store tracker_id for each info_hash
+        self.trackerIDMapping = {}
+        
+        #? Store list of peers for each info_hash, consumed in ClientDownloader
+        self.peerMapping = {}
     
     def Start(self):
         connectionLoopHandler = ServerConnectionLoopHandler(self)
@@ -224,15 +233,22 @@ class Server():
         
         self.serverSocket.close()
     
-    def AddTrackerID(self, info_hash, tracker_id):
-        self.trackerIDTable[info_hash] = tracker_id
+    def AddTrackerID(self, tracker_ip, tracker_port, tracker_id):            
+        self.trackerIDMapping[(tracker_ip, tracker_port)] = tracker_id
+        
+    def AddPeerMapping(self, info_hash, peer):
+        if info_hash not in self.peerMapping:
+            self.peerMapping[info_hash] = []
+        self.peerMapping[info_hash].append(peer)
 
-
-server = Server()
+server = None
 def Start():
+    server = Server()
     server.Start()
     
 def GetServer():
+    if (server == None):
+        print ("Server not started.")
     return server
 
 

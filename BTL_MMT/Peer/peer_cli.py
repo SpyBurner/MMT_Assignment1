@@ -10,7 +10,8 @@ def main():
     
     # Upload task
     parser.add_argument('--filePath', type=str)
-    parser.add_argument('--trackerURL', type=str)
+    parser.add_argument('--trackerIP', type=str, nargs='+')
+    parser.add_argument('--trackerPort', type=str, nargs='+')
     
     # Download task
     parser.add_argument('--metainfo', type=str)
@@ -19,7 +20,9 @@ def main():
     operation = args.o
     
     filePath = args.filePath
-    trackerURL = args.trackerURL
+    trackerIP = args.trackerIP
+    trackerPort = args.trackerPort
+    
 
     metainfo = args.metainfo
 
@@ -29,8 +32,8 @@ def main():
         Server.Start()
     elif operation == 'upload':
         #* UPLOADING
-        if filePath and trackerURL:
-            Client.Upload(filePath, trackerURL)
+        if filePath and trackerIP:
+            Client.Upload(filePath, trackerIP, trackerPort)
         else:
             print("Filepath and trackerURL are required for upload operation.")
     elif operation == 'download':
