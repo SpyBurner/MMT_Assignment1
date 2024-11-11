@@ -2,7 +2,7 @@ import threading
 import socket
 import peer_setting
 import Client
-import TrackerGetRequestBuilder
+import BTL_MMT.RequestBuilder as RequestBuilder
 import os
 import time
 import bcoding
@@ -63,15 +63,23 @@ class ServerConnectionLoopHandler(threading.Thread):
         threading.Thread.__init__(self, daemon=True)
         
         
-    def run(self):
-        while True:
-            sock, addr = self.serverSocket.accept()
-            uploader = ServerUploader(self.server, sock, addr)
-            uploader.start()
+    def start(self):
+        #? Stop the loop during a socket timeout, and not isRunning
+        while self.isRunning:
+            try:
+                sock, addr = self.server.serverSocket.accept()
+                uploader = ServerUploader(self.server, sock, addr)
+                uploader.start()
+            except socket.timeout:
+                pass
             
     def stop(self):
-        
         self.isRunning = False
+        
+        fake_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        fake_client.connect((self.server.ip, self.server.port))
+        fake_client.close()        
+        
 
 class Server():
     def __init__(self):
@@ -80,11 +88,13 @@ class Server():
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serverSocket.bind((self.ip, self.port))
         
+        self.serverSocket.timeout = peer_setting.PEER_SERVER_TIMEOUT
+        
         print("Listening on: {}:{}".format(self.ip, self.port))
         
         self.serverSocket.listen(peer_setting.PEER_SERVER_MAX_CONNECTION)
         
-        # Generate peerID on startup
+        # Generate peerID on startup 
         self.peerID = str(self.ip) + ":" + str(self.port) + time.strftime("%Y%m%d%H%M%S")
         
         self.StartupAnnouncer()
@@ -95,7 +105,7 @@ class Server():
         
         #? Common fields for all requests
         #! Example only
-        startRequestBuilder = TrackerGetRequestBuilder.TrackerGetRequestBuilder()
+        startRequestBuilder = RequestBuilder.TrackerRequestBuilder()
         startRequestBuilder.SetPeerId(self.peerID)
         startRequestBuilder.SetPeerIP(self.ip)
         startRequestBuilder.SetPort(self.port)
@@ -110,7 +120,7 @@ class Server():
             
             #TODO Send to the tracker to announce that the peer has started.                
     
-    def Run(self):
+    def Start(self):
         connectionLoopHandler = ServerConnectionLoopHandler(self)
         connectionLoopHandler.start()
         
@@ -124,9 +134,8 @@ class Server():
         
         self.serverSocket.close()
 
-
 def Start():
     server = Server()
-    server.Run()
+    server.Start()
 
 

@@ -5,7 +5,7 @@ class TrackerRequestEvent:
 
 #? Build and return a dictionary object that represents a tracker get request
 #? Can be later bencoded and sent to the tracker
-class TrackerGetRequestBuilder():
+class TrackerRequestBuilder():
     def __init__(self):
         self.info_hash = None
         self.peer_id = None
@@ -72,4 +72,48 @@ class TrackerGetRequestBuilder():
             "tracker_id": self.tracker_id,
             "compact": self.compact
         }
+
+class TrackerResponseBuilder():
+    def __init__(self):
+        self.interval = None
+        self.peers = None
+        self.complete = None
+        self.incomplete = None
+        self.tracker_id = None
         
+        self.compact = True
+        pass
+
+    def SetInterval(self, interval):
+        self.interval = interval
+        return self
+    
+    def SetPeers(self, peers):
+        self.peers = peers
+        return self
+    
+    def SetComplete(self, complete):
+        self.complete = complete
+        return self
+    
+    def SetIncomplete(self, incomplete):
+        self.incomplete = incomplete
+        return self
+    
+    def SetTrackerId(self, tracker_id):
+        self.tracker_id = tracker_id
+        return self
+    
+    def SetCompact(self, compact):
+        self.compact = compact
+        return self
+    
+    def Build(self):
+        return {
+            "interval": self.interval,
+            "peers": self.peers,
+            "complete": self.complete,
+            "incomplete": self.incomplete,
+            "tracker_id": self.tracker_id,
+            "compact": self.compact
+        }
