@@ -24,11 +24,11 @@ class TrackerRequestBuilder():
         self.info_hash = info_hash
         return self
     
-    def SetPeerId(self, peer_id):
+    def SetPeerID(self, peer_id):
         self.peer_id = peer_id
         return self
 
-    def SetPeerId(self, peer_id):
+    def SetPeerIP(self, peer_id):
         self.peer_id = peer_id
         return self
     

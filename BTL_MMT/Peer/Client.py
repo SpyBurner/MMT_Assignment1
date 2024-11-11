@@ -22,7 +22,7 @@ class ClientDownloader(threading.Thread):
         threading.Thread.__init__(self)
         self.metainfo = None
 
-    def run(self):
+    def start(self):
         print("Implement downloading logic here.")
 
 class ClientLister(threading.Thread):

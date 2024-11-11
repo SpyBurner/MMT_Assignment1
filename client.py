@@ -10,7 +10,10 @@ def new_connection(tid, host, port):
     client_socket = socket.socket()
     client_socket.connect((host, port))
     
-    sendData = "haha".encode("utf-8")
+    #request = fhasdlkjfhalsdfj.Build()
+    #request_encode = bcoding.bencode(request)
+    
+    sendData = request_encode.encode("utf-8")
     client_socket.send(sendData)
 
 
