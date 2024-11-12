@@ -1,11 +1,11 @@
 import socket
 from threading import Thread
-
+import bcoding
 
 def new_connection(addr, conn):
     client_socket = conn
     receiveData = client_socket.recv(1024);
-    data = receiveData.decode("utf-8")
+    data = bcoding.bdecode(receiveData)
     print(f"Received: {data}")
 
 

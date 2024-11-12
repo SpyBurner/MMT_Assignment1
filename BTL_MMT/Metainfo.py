@@ -1,4 +1,9 @@
 import os
+import sys
+import hashlib
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 import global_setting
 import bcoding
 
@@ -17,11 +22,17 @@ def GetAll(metainfoPath):
 #? Get a single metainfo
 def Get(metainfoPath):
     return bcoding.bdecode(open(metainfoPath, "rb").read())
-            
-def MetainfoBuilder():
+
+def GetInfoHash(metainfoPath):
+    metainfo = bcoding.bdecode(open(metainfoPath, 'rb').read())
+    info = metainfo['info']
+    return hashlib.sha1(bcoding.bencode(info)).hexdigest()     
+       
+class MetainfoBuilder():
     def __init__(self):
         self.info = {
             'piece length': None,
+            'pieces': None,
             'name': None,
             #? Single file mode
             'length': None,
@@ -29,10 +40,11 @@ def MetainfoBuilder():
             #? files: [{'length': None, 'path': None}]
             'files' : []
         }
+        #? announce_list: [{'ip': None, 'port': None}]
         self.announce_list = []
         
         #? Example
-        self.announce_list.append({'ip': None, 'port': None})
+        #? self.announce_list.append({'ip': None, 'port': None})
             
     def AddAnnounce(self, announce):
         self.announce_list.append(announce)
@@ -41,6 +53,9 @@ def MetainfoBuilder():
     def SetPieceLength(self, piece_length):
         self.info['piece length'] = piece_length
         return self
+
+    def SetPieces(self, pieces):
+        self.info['pieces'] = pieces
 
     def SetName(self, name):
         self.info['name'] = name
