@@ -12,7 +12,7 @@ import bcoding
 import math
 import hashlib
 import shutil
-import RequestBuilder as rb
+import TrackerProtocol as tp
 import Server
 import PeerWireProtocol as pwp
 import time
@@ -33,11 +33,14 @@ class ClientUploader(threading.Thread):
             metainfo = mi.MetainfoBuilder()
 
             for announce in self.announce_list:
-                metainfo.AddAnnounce(announce)
+                metainfo.AddAnnounce({
+                    'ip': announce[0],
+                    'port': int(announce[1])
+                })
 
             metainfo.SetPieceLength(global_setting.PIECE_SIZE)
 
-            def get_piece_hashes(file_path, piece_count):
+            def GetPieceHashes(file_path, piece_count):
                 piece_hashes = []
                 try:
                     with open(file_path, 'rb') as file:
@@ -56,7 +59,7 @@ class ClientUploader(threading.Thread):
                 metainfo.SetLength(file_size)
 
                 piece_count = math.ceil(file_size / global_setting.PIECE_SIZE)
-                piece_hashes = get_piece_hashes(self.filePath, piece_count)
+                piece_hashes = GetPieceHashes(self.filePath, piece_count)
                 metainfo.SetPieces(b''.join(piece_hashes))
             else:
                 piece_hashes = []
@@ -73,7 +76,7 @@ class ClientUploader(threading.Thread):
                         total_size += file_size
 
                         piece_count = math.ceil(file_size / global_setting.PIECE_SIZE)
-                        piece_hashes.extend(get_piece_hashes(file_path, piece_count))
+                        piece_hashes.extend(GetPieceHashes(file_path, piece_count))
 
                 metainfo.SetPieces(b''.join(piece_hashes))
 
@@ -98,16 +101,15 @@ class ClientUploader(threading.Thread):
                 print(f"Error copying file to repo: {e}")
 
             for announce in self.announce_list:
-                request = rb.TrackerRequestBuilder()
+                request = tp.TrackerRequestBuilder()
                 request.SetInfoHash(infohash)
                 request.SetEvent("started")
                 request.SetUploaded(0)
                 request.SetDownloaded(0)
                 request.SetLeft(0)
                 request.SetPeerID(Server.GetServer().peerID)
-                request.SetPort(peer_setting.PEER_SERVER_DEFAULT_PORT)
 
-                requester = Server.ServerRequester(Server.GetServer(), announce['ip'], announce['port'], request)
+                requester = Server.ServerRequester(Server.GetServer(), announce[0], announce[1], request)
                 requester.start()
         except Exception as e:
             print(f"Error in ClientUploader: {e}")
@@ -183,7 +185,7 @@ class ClientDownloader(threading.Thread):
         except Exception as e:
             print("Metainfo file already in position: ", e)
             
-        request = rb.TrackerRequestBuilder()
+        request = tp.TrackerRequestBuilder()
         request.set_info_hash(info_hash)
         request.set_event("started")
         request.set_uploaded(0)

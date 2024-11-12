@@ -10,8 +10,7 @@ def main():
     
     # Upload task
     parser.add_argument('--filePath', type=str)
-    parser.add_argument('--trackerIP', type=str, nargs='+')
-    parser.add_argument('--trackerPort', type=str, nargs='+')
+    parser.add_argument('--tracker', type=str, action='append', nargs='+')
     
     # Download task
     parser.add_argument('--metainfo', type=str)
@@ -20,20 +19,17 @@ def main():
     operation = args.o
     
     filePath = args.filePath
-    trackerIP = args.trackerIP
-    trackerPort = args.trackerPort
+    tracker = args.tracker
     
-
     metainfo = args.metainfo
 
-    
     if operation == 'start':
         #* STARTING PEER SERVER
         Server.Start()
     elif operation == 'upload':
         #* UPLOADING
-        if filePath and trackerIP:
-            Client.Upload(filePath, [(trackerIP, trackerPort)])
+        if filePath and tracker:
+            Client.Upload(filePath, tracker)
         else:
             print("Filepath and trackerURL are required for upload operation.")
     elif operation == 'download':
