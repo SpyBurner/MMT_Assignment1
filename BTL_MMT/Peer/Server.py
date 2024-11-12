@@ -48,9 +48,7 @@ class ServerRegularAnouncer(threading.Thread):
             
             info_hash = hashlib.sha1(bcoding.bencode(metainfo['info'])).hexdigest()       
             startRequest.SetInfoHash(info_hash)
-            
-        
-                
+                            
         
         #TODO Then send unspecified for every interval
         

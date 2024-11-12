@@ -1,4 +1,5 @@
 import argparse
+import Tracker
 
 def main():   
     parser = argparse.ArgumentParser(
@@ -12,6 +13,8 @@ def main():
     if operation == 'start':
         #* STARTING TRACKER
         print("Starting Tracker")
+        Tracker.Start()
+        
     elif operation == 'stat':
         #* TRACKER STATS
         print("Tracker Stats")
