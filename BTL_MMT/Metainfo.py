@@ -1,5 +1,6 @@
 import os
 import sys
+import hashlib
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -21,7 +22,12 @@ def GetAll(metainfoPath):
 #? Get a single metainfo
 def Get(metainfoPath):
     return bcoding.bdecode(open(metainfoPath, "rb").read())
-            
+
+def GetInfoHash(metainfoPath):
+    metainfo = bcoding.bdecode(open(metainfoPath, 'rb').read())
+    info = metainfo['info']
+    return hashlib.sha1(bcoding.bencode(info)).hexdigest()     
+       
 class MetainfoBuilder():
     def __init__(self):
         self.info = {

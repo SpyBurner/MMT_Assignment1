@@ -13,6 +13,7 @@ import bcoding
 import hashlib
 import BTL_MMT.Metainfo as mib
 import global_setting
+import PeerWireProtocol as pwp
 
 def GetHostIP():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -27,15 +28,10 @@ def GetHostIP():
         s.close()
     return (ip, port)
 
-def GetInfoHash(metainfoPath):
-    metainfo = bcoding.bdecode(open(metainfoPath, 'rb').read())
-    info = metainfo['info']
-    return hashlib.sha1(bcoding.bencode(info)).hexdigest()
-
 class ServerRequester(threading.Thread):
-    def __init__(self, server, trackerIP, trackerPort, request):
+    def __init__(self, trackerIP, trackerPort, request):
         threading.Thread.__init__(self, daemon=True)
-        self.server = server
+        self.server = GetServer()
         self.trackerIP = trackerIP
         self.trackerPort = trackerPort
         self.request = request
@@ -46,24 +42,31 @@ class ServerRequester(threading.Thread):
         self.callback = callback
     
     def run(self):
+        if (self.server == None):
+            print("Server not started at ServerRequester.")
+            return
         #? Send request to tracker
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((self.trackerIP, self.trackerPort))
         
         #? Add port to request after the connection is established
-        self.request['port'] = self.server.port
+        self.request['port'] = sock.getsockname()[1]
         
-        sock.sendall(bcoding.bencode(self.request))
+        if (self.server.UniqueMapKey(self.trackerIP, self.trackerPort) in self.server.trackerIDMapping):
+            self.request['tracker_id'] = self.server.trackerIDMapping[self.server.UniqueMapKey(self.trackerIP, self.trackerPort)]
+                
+        sock.sendall(bcoding.bencode(self.request.build()))
         
         #? Receive response from tracker
-        response = sock.recv(peer_setting.PEER_SERVER_MAX_RESPONSE_SIZE)
+        response = sock.recv(global_setting.TRACKER_RESPONSE_SIZE)
         sock.close()
         
-        #? Store info_hash for each tracker_id
-        
+        #? Tracker_id from every response is stored
         response_decode = bcoding.bdecode(response)
-        self.server.AddTrackerID(self.trackerIP, self.trackerPort, response_decode['tracker_id'])
         
+        print("Regular announcement to tracker: {}:{}".format(self.trackerIP, self.trackerPort) + "for info_hash: " + response_decode['info_hash'])
+        self.server.MapTrackerID(self.trackerIP, self.trackerPort, response_decode['tracker_id'])
+        self.server.MapPeer(self.request['info_hash'], response_decode['peers'])
         
         #? Call callback if it exists
         if self.callback:
@@ -71,9 +74,8 @@ class ServerRequester(threading.Thread):
 
 #? Announce all trackers about the peer's existence.
 class ServerRegularAnnouncer(threading.Thread):
-    def __init__(self, server, peer_id, peer_ip, peer_port, interval):
+    def __init__(self, peer_id, peer_ip, peer_port, interval):
         threading.Thread.__init__(self, daemon=True)
-        self.server = server;
         self.peer_id = peer_id
         self.peer_ip = peer_ip
         self.peer_port = peer_port
@@ -81,7 +83,6 @@ class ServerRegularAnnouncer(threading.Thread):
         self.interval = interval
     
     def run(self):
-           
         #? Send start request to all trackers, runs once
         #? Only handle files already downloaded at startup, for newly uploaded files are handled in ClientUploader
         startRequest = rb.TrackerRequestBuilder()
@@ -89,9 +90,8 @@ class ServerRegularAnnouncer(threading.Thread):
         startRequest.SetPort(self.peer_port)
         metainfos = mib.GetAll(peer_setting.METAINFO_FILE_PATH)
         for metainfo in metainfos:    
-            metainfo_decode = bcoding.bdecode(open(metainfo, 'rb'))
 
-            info_hash = hashlib.sha1(metainfo_decode['info']).hexdigest()       
+            info_hash = hashlib.sha1(metainfo['info']).hexdigest()       
             startRequest.SetInfoHash(info_hash)
             
             startRequest.SetUploaded(0)
@@ -101,7 +101,6 @@ class ServerRegularAnnouncer(threading.Thread):
             startRequest.SetLeft(0)
             
             startRequest.SetEvent('started')
-            startRequest.SetCompact(True)
             startRequest.SetTrackerId(None)        
                         
             request = startRequest.Build()
@@ -110,7 +109,7 @@ class ServerRegularAnnouncer(threading.Thread):
                 trackerIP = announce['ip']
                 trackerPort = announce['port']
                 
-                requester = ServerRequester(self.server, trackerIP, trackerPort, request)
+                requester = ServerRequester(trackerIP, trackerPort, request)
                 
                 requester.start()
         
@@ -128,8 +127,7 @@ class ServerRegularAnnouncer(threading.Thread):
             metainfos = mib.GetAll(peer_setting.METAINFO_FILE_PATH)
             
             for metainfo in metainfos:
-                metainfo_decode = bcoding.bdecode(open(metainfo, 'rb'))
-                info_hash = hashlib.sha1(metainfo_decode['info']).hexdigest()
+                info_hash = hashlib.sha1(metainfo['info']).hexdigest()
                 tracker_id = self.server.trackerIDTable[info_hash]
                 
                 regularRequest.SetInfoHash(info_hash)
@@ -153,26 +151,77 @@ class ServerRegularAnnouncer(threading.Thread):
                     requester.start()
         
 class ServerUploader(threading.Thread):
-    def __init__(self, server, sock, addr):
+    def __init__(self, server, sock, addr, timeout=peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT):
         threading.Thread.__init__(self, daemon=True)
         self.server = server
         self.sock = sock
         self.addr = addr
+        self.timeout = timeout
         
     def run(self):
-        # TODO Receive request from peer client and respond with the right piece
-        #? Receive request from peer client
-        request = self.sock.recv(peer_setting.PEER_CLIENT_MAX_REQUEST_SIZE)
-        
-        pass
+        # TODO Receive request from peer client and respond
+        self.sock.settimeout(self.timeout)     
+        info_hash = ""   
+        file  = ""
+        try:
+            while True:
+                data = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+                if not data:
+                    break
+                
+                #? Parse request from peer client
+                request = bcoding.bdecode(data)
+                
+                if (request['type'] == pwp.Type.HANDSHAKE):
+                    #? Received handshake, set info_hash and check local file
+                    info_hash = request['info_hash']
+                    file = info_hash + peer_setting.TEMP_DOWNLOAD_FILE_EXTENSION
+                    
+                    if os.path.exists(file):
+                        response = pwp.Handshake('huh?', self.server.peerID)
+                    else:
+                        response = pwp.Handshake(request['info_hash'], self.server.peerID)
+                        
+                    self.sock.sendall(bcoding.bencode(response))
+                elif (request['type'] == pwp.Type.BITFIELD):
+                    #? Respond with bitfield
+                    if (file == ""):
+                        response = pwp.Handshake('huh?', self.server.peerID)
+                    else:
+                        response = pwp.Bitfield(pwp.GenerateBitfield(file))
+                    
+                    self.sock.sendall(bcoding.bencode(response))
+                elif (request['type'] == pwp.Type.REQUEST):
+                    #? Respond with piece
+                    if (file == ""):
+                        response = pwp.Handshake('huh?', self.server.peerID)
+                        self.sock.sendall(bcoding.bencode(response))
+                        continue
+                    
+                    index = request['index']
+                    begin = request['begin']
+                    length = request['length']
+                    
+                    with open(file, 'rb') as f:
+                        f.seek(index * peer_setting.PIECE_SIZE + begin)
+                        block = f.read(length)
+                    
+                    response = pwp.Piece(index, begin, block)
+                    self.sock.sendall(bcoding.bencode(response))
+                    
+        except socket.timeout:
+            print("Connection timeout for peer: " + self.addr[0] + ":" + str(self.addr[1]))
+                    
+            
+                       
+    
 
 #? Run a thread to loop on behalf of the main thread to accept incoming connections.
 class ServerConnectionLoopHandler(threading.Thread):
     def __init__(self, server):
         self.isRunning = True
         self.server = server
-        threading.Thread.__init__(self, daemon=True)
-        
+        threading.Thread.__init__(self, daemon=True)    
         
     def start(self):
         print("ServerConnectionLoopHandler started.")
@@ -180,7 +229,7 @@ class ServerConnectionLoopHandler(threading.Thread):
         while self.isRunning:
             try:
                 sock, addr = self.server.serverSocket.accept()
-                uploader = ServerUploader(self.server, sock, addr)
+                uploader = ServerUploader(self.server, sock, addr, peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
                 uploader.start()
             except socket.timeout:
                 pass
@@ -233,22 +282,39 @@ class Server():
         
         self.serverSocket.close()
     
-    def AddTrackerID(self, tracker_ip, tracker_port, tracker_id):            
-        self.trackerIDMapping[(tracker_ip, tracker_port)] = tracker_id
+    def UniqueMapKey(self, ip, port):
+        return ip + ":" + str(port)
+    
+    def MapTrackerID(self, tracker_ip, tracker_port, tracker_id):           
+        print("Mapping tracker_id: " + tracker_id + " for tracker: " + tracker_ip + ":" + str(tracker_port))
+        self.trackerIDMapping[self.UniqueMapKey(tracker_ip, tracker_port)] = tracker_id
+    
+    def MapPeer(self, info_hash, peerList):
         
-    def AddPeerMapping(self, info_hash, peer):
-        if info_hash not in self.peerMapping:
-            self.peerMapping[info_hash] = []
-        self.peerMapping[info_hash].append(peer)
-
+        print("Mapping peer list for info_hash: " + info_hash)
+        
+        for peer in peerList:
+            peer_id = peer['peer_id']
+            ip = peer['ip']
+            port = peer['port']
+            
+            key = self.UniqueMapKey(ip, port)
+            
+            if info_hash not in self.peerMapping:
+                self.peerMapping[info_hash] = {}
+            
+            self.peerMapping[info_hash][key] = {
+                'id': peer_id,
+                'ip': ip,
+                'port': port
+            }
+        
 server = None
 def Start():
     server = Server()
     server.Start()
     
 def GetServer():
-    if (server == None):
-        print ("Server not started.")
     return server
 
 
