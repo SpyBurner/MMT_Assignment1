@@ -143,7 +143,7 @@ class ClientPieceRequester(threading.Thread):
         try:
             self.sock.sendall(bcoding.bencode(pwp.Request(self.index, self.begin, self.length)))
             
-            response = self.sock.recv(global_setting.PIECE_SIZE)
+            response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
             response = bcoding.bdecode(response)
             
             if (response['type'] != pwp.Type.PIECE):
@@ -237,7 +237,7 @@ class ClientDownloader(threading.Thread):
             peerList = Server.GetServer().peerMapping[info_hash]
             
             #? Print list of peers
-            print("Aquired peer list: ")
+            print("Acquired peer list: ")
             for key, peer in peerList:
                 print(peer)
             
