@@ -10,9 +10,7 @@ import secrets
 class TrackerDB():
     def __init__(self):
         self.swarm = {}
-        self.last_announce = {}
         
-    
     def add(self, info_hash, peer_id, ip, port, tracker_id, seeder=False):
         if info_hash not in self.swarm:
             self.swarm[info_hash] = {}
@@ -22,6 +20,7 @@ class TrackerDB():
             'ip': ip,
             'port': port,
             'seeder': seeder,
+            'last_announce': time.time()
         }
         self.swarm[info_hash][tracker_id] = newPeer
     
@@ -30,14 +29,13 @@ class TrackerDB():
             raise Exception("Peer not in swarm")
         self.swarm[info_hash][tracker_id]['seeder'] = True
         
-    def update_status(self, tracker_id):
-        self.last_announce[tracker_id] = time.time()
+    def update_status(self, info_hash, tracker_id):
+        self.swarm[info_hash][tracker_id]['last_announce'] = time.time()
             
     def delete(self, info_hash, tracker_id):
         if tracker_id not in self.swarm[info_hash]:
             raise Exception("Peer not in swarm")
         del self.swarm[info_hash][tracker_id]
-        del self.last_announce[tracker_id]
             
     def get_peer_list(self, info_hash):
         peer_list = [
@@ -45,23 +43,9 @@ class TrackerDB():
             for peer in self.swarm[info_hash].values()
         ]
         return peer_list
-        
                     
     def generate_tracker_id(self):
-        # regenerate tracker id if it already exists
-        tracker_id = secrets.token_hex(16)
-        while tracker_id in self.last_announce:
-            tracker_id = secrets.token_hex(16)
-        return tracker_id
-
-# class TrackerResponder(threading.Thread):
-#     def __init__(self, sock, addr):
-#         threading.Thread.__init__(self, daemon=True)
-#         self.sock = sock
-#         self.addr = addr
-        
-#     def start(self):
-#         pass
+        return secrets.token_hex(16)
     
 class Tracker():
     def __init__(self, port):
@@ -73,7 +57,7 @@ class Tracker():
         while True:
             for info_hash in self.db.swarm:
                 for peer in self.db.swarm[info_hash]:
-                    if time.time() - self.db.last_announce[peer] > TIMEOUT_PER_SWARM:
+                    if time.time() - self.db.swarm[info_hash][peer]['last_announce'] > TIMEOUT_PER_SWARM:
                         self.db.delete(info_hash, peer)
             time.sleep(TRACKER_INTERVAL)
             
@@ -94,8 +78,7 @@ class Tracker():
                 event = request.get("event") # None if not found
                 # peer wanna join the swarm
                 if event == RequestEvent.STARTED:
-                    if request.get("tracker_id") is None:
-                        response.SetTrackerId(self.db.generate_tracker_id())
+                    response.SetTrackerId(self.db.generate_tracker_id())
                     
                     self.require_fields(request, ['peer_id', 'port', 'left'])
                     left = request["left"]
@@ -116,7 +99,7 @@ class Tracker():
                     elif event == RequestEvent.COMPLETED:
                         self.db.finish_download(request["info_hash"], request["tracker_id"])
                 
-                self.db.update_status(request["tracker_id"])
+                self.db.update_status(request['info_hash'], request["tracker_id"])
                 response.SetPeers(self.db.get_peer_list(request["info_hash"]))
                     
         except Exception as e:
