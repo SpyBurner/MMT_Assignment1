@@ -1,4 +1,9 @@
 from hashlib import sha1
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 import threading
 import time
 import socket
@@ -110,7 +115,6 @@ class Tracker():
             print(f"[DISCONNECTED] {addr} disconnected.")
     
     def start(self):
-        print("Starting Tracker")
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind((self.host, self.port))
         server_socket.listen()

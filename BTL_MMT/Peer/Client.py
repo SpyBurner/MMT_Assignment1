@@ -17,6 +17,8 @@ import Server
 import PeerWireProtocol as pwp
 import time
 
+file_lock = threading.Lock()
+
 #TODO Implement sending requests to the tracker.
 #TODO Request format is defined in the project description.
 class ClientUploader(threading.Thread):
@@ -31,9 +33,9 @@ class ClientUploader(threading.Thread):
             metainfo = mi.MetainfoBuilder()
 
             for announce in self.announce_list:
-                metainfo.add_announce(announce)
+                metainfo.AddAnnounce(announce)
 
-            metainfo.set_piece_length(global_setting.PIECE_SIZE)
+            metainfo.SetPieceLength(global_setting.PIECE_SIZE)
 
             def get_piece_hashes(file_path, piece_count):
                 piece_hashes = []
@@ -50,12 +52,12 @@ class ClientUploader(threading.Thread):
 
             if singleFileMode:
                 file_size = os.path.getsize(self.filePath)
-                metainfo.set_name(os.path.basename(self.filePath))
-                metainfo.set_length(file_size)
+                metainfo.SetName(os.path.basename(self.filePath))
+                metainfo.SetLength(file_size)
 
                 piece_count = math.ceil(file_size / global_setting.PIECE_SIZE)
                 piece_hashes = get_piece_hashes(self.filePath, piece_count)
-                metainfo.set_pieces(b''.join(piece_hashes))
+                metainfo.SetPieces(b''.join(piece_hashes))
             else:
                 piece_hashes = []
                 total_size = 0
@@ -73,7 +75,7 @@ class ClientUploader(threading.Thread):
                         piece_count = math.ceil(file_size / global_setting.PIECE_SIZE)
                         piece_hashes.extend(get_piece_hashes(file_path, piece_count))
 
-                metainfo.set_pieces(b''.join(piece_hashes))
+                metainfo.SetPieces(b''.join(piece_hashes))
 
             try:
                 os.makedirs(peer_setting.METAINFO_FILE_PATH, exist_ok=True)
@@ -85,7 +87,7 @@ class ClientUploader(threading.Thread):
             #? Write metainfo to file with infohash as filename           
             metainfo_path = os.path.join(peer_setting.METAINFO_FILE_PATH, infohash + global_setting.METAINFO_FILE_EXTENSION)
             with open(metainfo_path, 'wb') as f:
-                f.write(bcoding.bencode(metainfo.build()))
+                f.write(bcoding.bencode(metainfo.Build()))
 
             #? Copy file to repo
             repo_path = os.path.join(peer_setting.REPO_FILE_PATH, infohash)
@@ -97,13 +99,13 @@ class ClientUploader(threading.Thread):
 
             for announce in self.announce_list:
                 request = rb.TrackerRequestBuilder()
-                request.set_info_hash(infohash)
-                request.set_event("started")
-                request.set_uploaded(0)
-                request.set_downloaded(0)
-                request.set_left(0)
-                request.set_peer_id(Server.GetServer().peerID)
-                request.set_port(peer_setting.PEER_SERVER_DEFAULT_PORT)
+                request.SetInfoHash(infohash)
+                request.SetEvent("started")
+                request.SetUploaded(0)
+                request.SetDownloaded(0)
+                request.SetLeft(0)
+                request.SetPeerID(Server.GetServer().peerID)
+                request.SetPort(peer_setting.PEER_SERVER_DEFAULT_PORT)
 
                 requester = Server.ServerRequester(Server.GetServer(), announce['ip'], announce['port'], request)
                 requester.start()
@@ -150,9 +152,13 @@ class ClientPieceRequester(threading.Thread):
                 print("Peer did not respond with correct piece.")
                 return
 
+            file_lock.acquire()
+            
             with open(self.filePath, 'r+b') as f:
                 f.seek(self.index * global_setting.PIECE_SIZE + self.begin)
                 f.write(response['block'])
+                
+            file_lock.release()
             
         except Exception as e:
             print(f"Error in ClientPieceRequester: {e}")
@@ -171,6 +177,7 @@ class ClientDownloader(threading.Thread):
         print("Downloading file(s) with name: ", metainfo['info']['name'], " and info_hash: ", info_hash)
         
         #? Copy metainfo into the metainfo directory
+        #TODO Rename metainfo file to info_hash
         try:
             shutil.copy(self.metainfoPath, peer_setting.METAINFO_FILE_PATH)
         except Exception as e:
@@ -263,7 +270,6 @@ class ClientDownloader(threading.Thread):
                     sock.close()
                     continue
 
-                
                 #? ALWAYS send bitfield
                 sock.sendall(bcoding.bencode(bitfield))
                 
@@ -286,11 +292,10 @@ class ClientDownloader(threading.Thread):
                 keepAlive.start()
                 keepAliveThreads.append(keepAlive)
             
-            updateBitfield = bitfield
+            updateBitfield = bitfield.copy()
             
             #? Choose which piece to download from which peer
             #? Spread the load evenly
-            
             pieceRequesterThreads = []
             
             piecePerPeer = math.ceil(pieceCount / len(peerConnections))
@@ -316,6 +321,7 @@ class ClientDownloader(threading.Thread):
             for thread in keepAliveThreads:
                 thread.stop()
         
+        #TODO Multiple file case where
         #? Rename temp file to actual file
         try:
             os.rename(tempFilePath, os.path.join(peer_setting.REPO_FILE_PATH, info_hash, metainfo['info']['name']))
@@ -324,20 +330,6 @@ class ClientDownloader(threading.Thread):
         
         print("Download for file(s) ", metainfo['info']['name'], " with info_hash ", info_hash, " completed.")        
                 
-            
-            
-            
-                
-                
-            
-            
-        
-               
-        
-        
-        
-        
-
 class ClientLister(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)

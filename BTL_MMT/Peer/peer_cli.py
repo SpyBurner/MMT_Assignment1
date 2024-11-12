@@ -33,7 +33,7 @@ def main():
     elif operation == 'upload':
         #* UPLOADING
         if filePath and trackerIP:
-            Client.Upload(filePath, trackerIP, trackerPort)
+            Client.Upload(filePath, [(trackerIP, trackerPort)])
         else:
             print("Filepath and trackerURL are required for upload operation.")
     elif operation == 'download':

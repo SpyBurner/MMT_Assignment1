@@ -213,9 +213,6 @@ class ServerUploader(threading.Thread):
             print("Connection timeout for peer: " + self.addr[0] + ":" + str(self.addr[1]))
                     
             
-                       
-    
-
 #? Run a thread to loop on behalf of the main thread to accept incoming connections.
 class ServerConnectionLoopHandler(threading.Thread):
     def __init__(self, server):
@@ -259,7 +256,7 @@ class Server():
         self.peerID = str(self.ip) + ":" + str(self.port) + time.strftime("%Y%m%d%H%M%S")
         
         # Start regular announcer
-        regularAnouncer = ServerRegularAnnouncer(self, self.peerID, self.ip, self.port, peer_setting.ANNOUNCE_INTERVAL)
+        regularAnouncer = ServerRegularAnnouncer(self.peerID, self.ip, self.port, peer_setting.ANNOUNCE_INTERVAL)
         regularAnouncer.start()
         
         #? Store tracker_id for each info_hash
