@@ -72,7 +72,7 @@ class ServerRequester(threading.Thread):
             print("[Failure reason] " + response_decode['failure_reason'])
             return
         
-        # print(response_decode)
+        print(response_decode)
         
         print("[Regular announcement] To tracker: {}:{}".format(self.trackerIP, self.trackerPort) + " for info_hash: " + builtRequest['info_hash'])
         
@@ -307,6 +307,11 @@ class Server():
                 trackerPort = input()
                 
                 Client.Upload(filePath, [[trackerIP, int(trackerPort)]])
+            elif operation == 'download':
+                print("Enter metainfo file path: ")
+                metainfo = input()
+                
+                Client.Download(metainfo)
     
         
         connectionLoopHandler.stop()

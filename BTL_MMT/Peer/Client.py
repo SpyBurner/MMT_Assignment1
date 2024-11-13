@@ -217,10 +217,12 @@ class ClientDownloader(threading.Thread):
         pieceLength = metainfo['info']['piece length']
         totalLength = 0
         
-        #? Check if file is single file mode
+        #? Get totalLength in either file mode
+        isSingleFile = True
         if (metainfo['info']['files'] == None):
             totalLength = metainfo['info']['length']
         else:
+            isSingleFile = False
             for file in metainfo['info']['files']:
                 totalLength += file['length']
         
@@ -324,14 +326,30 @@ class ClientDownloader(threading.Thread):
                 thread.stop()
         
         #TODO Multiple file case where
-        #? Rename temp file to actual file
-        try:
-            os.rename(tempFilePath, os.path.join(peer_setting.REPO_FILE_PATH, info_hash, metainfo['info']['name']))
-        except Exception as e:
-            print("Error renaming file: ", e)
-        
-        print("Download for file(s) ", metainfo['info']['name'], " with info_hash ", info_hash, " completed.")        
+        #? Map temp file to the actual file(s)
+        if isSingleFile:
+            try:
+                os.rename(tempFilePath, os.path.join(peer_setting.REPO_FILE_PATH, info_hash, metainfo['info']['name']))
+            except Exception as e:
+                print("Error renaming file: ", e)
+            
+        else:
+            try:
+                with open(tempFilePath, 'rb') as tempFile:
+                    for file in metainfo['info']['files']:
+                        filePath = os.path.join(peer_setting.REPO_FILE_PATH, info_hash, *file['path'])
+                        fileLength = file['length']
+                        
+                        os.makedirs(os.path.dirname(filePath), exist_ok=True)
+                        
+                        with open(filePath, 'wb') as f:
+                            f.write(tempFile.read(fileLength))
+            except Exception as e:
+                print("Error in file mapping ", e)
                 
+        print("Download for file(s) ", metainfo['info']['name'], " with info_hash ", info_hash, " completed.")        
+            
+        
 class ClientLister(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
