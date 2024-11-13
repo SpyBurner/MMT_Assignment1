@@ -12,6 +12,9 @@ def GetAll(metainfoPath):
     
     result = []
     
+    if not os.path.exists(metainfoPath):
+        return result
+    
     for file in os.listdir(metainfoPath):
         if file.endswith(global_setting.METAINFO_FILE_EXTENSION):
             metainfo_decode = bcoding.bdecode(open(metainfoPath + file, "rb").read())

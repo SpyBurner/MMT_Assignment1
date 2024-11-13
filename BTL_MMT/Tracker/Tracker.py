@@ -12,6 +12,7 @@ from bcoding import bencode, bdecode
 from TrackerProtocol import *
 import secrets
 
+import copy
 class TrackerDB():
     def __init__(self):
         self.swarm = {}
@@ -30,11 +31,19 @@ class TrackerDB():
         self.swarm[info_hash][tracker_id] = newPeer
     
     def finish_download(self, info_hash, tracker_id):
+        if info_hash not in self.swarm:
+            raise Exception("Swarm not found")
+        
         if tracker_id not in self.swarm[info_hash]:
             raise Exception("Peer not in swarm")
         self.swarm[info_hash][tracker_id]['seeder'] = True
         
     def update_status(self, info_hash, tracker_id):
+        if info_hash not in self.swarm:
+            raise Exception("Swarm not found")
+        
+        if tracker_id not in self.swarm[info_hash]:
+            raise Exception("Peer not in swarm")
         self.swarm[info_hash][tracker_id]['last_announce'] = time.time()
             
     def delete(self, info_hash, tracker_id):
@@ -61,7 +70,7 @@ class Tracker():
     def check_timeout(self):
         while True:
             #? Clone self.db.swarm before altering
-            dbSwarmClone = self.db.swarm.copy()
+            dbSwarmClone = copy.deepcopy(self.db.swarm)
             
             for info_hash in dbSwarmClone:
                 for peer in dbSwarmClone[info_hash]:

@@ -19,8 +19,6 @@ import time
 
 file_lock = threading.Lock()
 
-#TODO Implement sending requests to the tracker.
-#TODO Request format is defined in the project description.
 class ClientUploader(threading.Thread):
     def __init__(self, filePath, announce_list):
         threading.Thread.__init__(self)
@@ -103,6 +101,7 @@ class ClientUploader(threading.Thread):
             for announce in self.announce_list:
                 request = tp.TrackerRequestBuilder()
                 request.SetInfoHash(infohash)
+                request.SetPort(Server.GetServer().port)
                 request.SetEvent("started")
                 request.SetUploaded(0)
                 request.SetDownloaded(0)
@@ -124,7 +123,7 @@ class ClientKeepAlive(threading.Thread):
     def run(self):
         while self.isRunning:
             try:
-                self.sock.sendall(pwp.KeepAlive())
+                self.sock.sendall(bcoding.bencode(pwp.KeepAlive()))
                 time.sleep(self.interval)
             except Exception as e:
                 print(f"Error in ClientKeepAlive: {e}")
@@ -174,26 +173,36 @@ class ClientDownloader(threading.Thread):
         #TODO Get info_hash from metainfo
         metainfo = mi.Get(self.metainfoPath)
         
-        info_hash = hashlib.sha1(metainfo['info']).hexdigest()
+        info_hash = hashlib.sha1(bcoding.bencode(metainfo['info'])).hexdigest()
         
-        print("Downloading file(s) with name: ", metainfo['info']['name'], " and info_hash: ", info_hash)
+        print("[Downloading] name: ", metainfo['info']['name'], " and info_hash: ", info_hash)
+        
+        print("[Metainfo] ", metainfo)
+        
+        #? Create metainfo directory if it does not exist
+        try:
+            os.makedirs(peer_setting.METAINFO_FILE_PATH, exist_ok=True)
+            print("Metainfo directory created.")
+        except Exception as e:
+            print("Error creating metainfo directory: ", e)
         
         #? Copy metainfo into the metainfo directory
         #TODO Rename metainfo file to info_hash
         try:
             shutil.copy(self.metainfoPath, peer_setting.METAINFO_FILE_PATH)
         except Exception as e:
-            print("Metainfo file already in position: ", e)
-            
-        request = tp.TrackerRequestBuilder()
-        request.set_info_hash(info_hash)
-        request.set_event("started")
-        request.set_uploaded(0)
-        request.set_downloaded(0)
-        request.set_left(0)
-        request.set_peer_id(Server.GetServer().peerID)
+            print("Metainfo file copy error: ", e)
         
         server = Server.GetServer()
+        
+        request = tp.TrackerRequestBuilder()
+        request.SetInfoHash(info_hash)
+        request.SetPort(server.port)
+        request.SetEvent("started")
+        request.SetUploaded(0)
+        request.SetDownloaded(0)
+        request.SetLeft(0)
+        request.SetPeerID(server.peerID)
         
         requesters = []
         
@@ -219,7 +228,7 @@ class ClientDownloader(threading.Thread):
         
         #? Get totalLength in either file mode
         isSingleFile = True
-        if (metainfo['info']['files'] == None):
+        if (len(metainfo['info']['files']) == 0):
             totalLength = metainfo['info']['length']
         else:
             isSingleFile = False
@@ -229,7 +238,7 @@ class ClientDownloader(threading.Thread):
         pieceCount = math.ceil(totalLength / pieceLength)
         
         #? Create file in repo with filler bytes
-        tempFilePath = os.path.join(peer_setting.REPO_FILE_PATH, info_hash, info_hash + global_setting.TEMP_DOWNLOAD_FILE_EXTENSION)
+        tempFilePath = os.path.join(peer_setting.REPO_FILE_PATH, info_hash, info_hash + peer_setting.TEMP_DOWNLOAD_FILE_EXTENSION)
         try: 
             with open(tempFilePath, 'wb') as f:
                 f.write(b'\0' * totalLength)
@@ -238,47 +247,83 @@ class ClientDownloader(threading.Thread):
         
         pieces = metainfo['info']['pieces']
         
+        print('Metainfo extracts: ', pieceLength, totalLength, pieceCount, pieces)
+        
+        tryCount = 0;
+        tryLimit = 3;
+        
         while True:
+            tryCount += 1
+            if (tryCount > tryLimit):
+                print("Download failed after ", tryLimit, " attempts.")
+                #? Leave swarm
+                request.SetEvent("stopped")
+                for announce in metainfo['announce_list']:
+                    requester = Server.ServerRequester(server, announce['ip'], announce['port'], request)  
+                    requesters.append(requester)
+                    requester.start()
+                return
+            
             bitfield = pwp.Bitfield(pwp.GenerateBitfield(pieces, pieceCount, pieceLength, tempFilePath))
             
+            print("Current number of pieces downloaded: ", sum(bitfield['bitfield']))
+            
             #? Break when all pieces are downloaded
-            if (sum(bitfield) == pieceCount):
+            if (sum(bitfield['bitfield']) == pieceCount):
                 break
             
             peerList = Server.GetServer().peerMapping[info_hash]
             
             #? Print list of peers
-            print("Acquired peer list: ")
-            for key, peer in peerList:
-                print(peer)
+            print("[Acquired peer list] ")
+            print(peerList)
             
             #? Connect to peers for handshake and bitfield exchange            
             # Format: (socket, bitfield)
             peerConnections = []
+            keepAliveThreads = []
+            server = Server.GetServer()
             
             for peer in peerList:
+                #? Skip self
+                if (peer['ip'] == server.ip and peer['port'] == server.port):
+                    continue
+                
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
-                sock.connect((peer['ip'], peer['port']))
+                try: 
+                    sock.connect((peer['ip'], peer['port']))
+                except Exception as e:
+                    print("Error connecting to peer: ", e)
+                    continue
                 
                 #? Send handshake
                 handshake = pwp.Handshake(info_hash, Server.GetServer().peerID)
                 sock.sendall(bcoding.bencode(handshake))
                 
+                print("[Handshake] sent to peer: ", peer['ip'])
+                
                 #? Receive handshake
                 response = sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
                 response = bcoding.bdecode(response)
+                
+                print("[Handshake] received from peer: ", peer['ip'])
                 
                 if (response['type'] != pwp.Type.HANDSHAKE or response['info_hash'] != info_hash):
                     print("Peer " + peer['ip'] + " did not respond with correct handshake.")
                     sock.close()
                     continue
 
+                #? Create keep alive thread
+                keepAlive = ClientKeepAlive(sock, peer_setting.KEEP_ALIVE_INTERVAL)
+                keepAlive.start()
+                keepAliveThreads.append(keepAlive)
+
                 #? ALWAYS send bitfield
                 sock.sendall(bcoding.bencode(bitfield))
                 
                 #? Receive bitfield
-                response = sock.recv(global_setting.BITFIELD_SIZE)
+                response = sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
                 response = bcoding.bdecode(response)
                 
                 if (response['type'] != pwp.Type.BITFIELD):
@@ -286,16 +331,15 @@ class ClientDownloader(threading.Thread):
                     sock.close()
                     continue
                 
+                print("[Bitfield] received from peer: ", peer['ip'])
+                
                 peerConnections.append((sock, response['bitfield']))
-            
-            #? Start keep alive threads
-            keepAliveThreads = []
-            
-            for connection in peerConnections:
-                keepAlive = ClientKeepAlive(connection[0], global_setting.KEEP_ALIVE_INTERVAL)
-                keepAlive.start()
-                keepAliveThreads.append(keepAlive)
-            
+
+            #? Check connection list
+            if (len(peerConnections) == 0):
+                print("[Download attempt", tryCount," ] No peers connected.")
+                continue
+
             updateBitfield = bitfield.copy()
             
             #? Choose which piece to download from which peer
@@ -346,7 +390,7 @@ class ClientDownloader(threading.Thread):
                             f.write(tempFile.read(fileLength))
             except Exception as e:
                 print("Error in file mapping ", e)
-                
+        
         print("Download for file(s) ", metainfo['info']['name'], " with info_hash ", info_hash, " completed.")        
             
         
