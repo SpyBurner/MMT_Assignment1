@@ -60,9 +60,12 @@ class Tracker():
         
     def check_timeout(self):
         while True:
-            for info_hash in self.db.swarm:
-                for peer in self.db.swarm[info_hash]:
-                    if time.time() - self.db.swarm[info_hash][peer]['last_announce'] > TIMEOUT_PER_SWARM:
+            #? Clone self.db.swarm before altering
+            dbSwarmClone = self.db.swarm.copy()
+            
+            for info_hash in dbSwarmClone:
+                for peer in dbSwarmClone[info_hash]:
+                    if time.time() - dbSwarmClone[info_hash][peer]['last_announce'] > TIMEOUT_PER_SWARM:
                         self.db.delete(info_hash, peer)
             time.sleep(TRACKER_INTERVAL)
             
@@ -76,27 +79,31 @@ class Tracker():
             data = sock.recv(1024)
             if data:
                 response = TrackerResponseBuilder()
-                request = data.bdecode()
+                request = bdecode(data)
                 
                 self.require_fields(request, ['info_hash'])
                     
                 event = request.get("event") # None if not found
+                
+                tracker_id = None
                 # peer wanna join the swarm
                 if event == RequestEvent.STARTED:
-                    response.SetTrackerId(self.db.generate_tracker_id())
+                    tracker_id = self.db.generate_tracker_id()
+                    response.SetTrackerId(tracker_id)
                     
                     self.require_fields(request, ['peer_id', 'port', 'left'])
                     left = request["left"]
                     if left == 0:
                         # peer already has the file
-                        self.db.add(request["info_hash"], request["peer_id"], addr[0], request["port"], request["tracker_id"], seeder=True)
+                        self.db.add(request["info_hash"], request["peer_id"], addr[0], request["port"], tracker_id, seeder=True)
                     elif left > 0:
                         # peer want to download the file
-                        self.db.add(request["info_hash"], request["peer_id"], addr[0], request["port"], request["tracker_id"])
+                        self.db.add(request["info_hash"], request["peer_id"], addr[0], request["port"], tracker_id)
                     else:
                         raise Exception("Invalid 'left' value")
                 else:
                     self.require_fields(request, ['tracker_id'])
+                    tracker_id = request["tracker_id"]
                     # peer wanna leave the swarm
                     if event == RequestEvent.STOPPED:
                         self.db.delete(request["info_hash"], request["tracker_id"])
@@ -104,11 +111,12 @@ class Tracker():
                     elif event == RequestEvent.COMPLETED:
                         self.db.finish_download(request["info_hash"], request["tracker_id"])
                 
-                self.db.update_status(request['info_hash'], request["tracker_id"])
+                self.db.update_status(request['info_hash'], tracker_id)
                 response.SetPeers(self.db.get_peer_list(request["info_hash"]))
                     
         except Exception as e:
             response.SetFailureReason(str(e))
+            raise e
         finally:
             sock.sendall(bencode(response.Build()))
             sock.close()

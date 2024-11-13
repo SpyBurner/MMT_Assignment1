@@ -15,7 +15,6 @@ class TrackerRequestBuilder():
         self.left = None
         self.event = None
         self.tracker_id = None
-        self.compact = True
 
     def SetInfoHash(self, info_hash):
         self.info_hash = info_hash
@@ -45,27 +44,23 @@ class TrackerRequestBuilder():
         self.event = event
         return self
     
-    def SetTrackerId(self, tracker_id):
+    def SetTrackerID(self, tracker_id):
         self.tracker_id = tracker_id
         return self
     
-    def SetCompact(self, compact):
-        self.compact = compact
-        return self
-    
     def Build(self):
-        return {
-            "info_hash": self.info_hash,
-            "peer_id": self.peer_id,
-            "port": self.port,
-            "uploaded": self.uploaded,
-            "downloaded": self.downloaded,
-            "left": self.left,
-            "event": self.event,
-            "tracker_id": self.tracker_id,
-            "compact": self.compact
-        }
-        # return {key: value for key, value in self.__dict__.items() if value is not None}
+        # return {
+        #     "info_hash": self.info_hash,
+        #     "peer_id": self.peer_id,
+        #     "port": self.port,
+        #     "uploaded": self.uploaded,
+        #     "downloaded": self.downloaded,
+        #     "left": self.left,
+        #     "event": self.event,
+        #     "tracker_id": self.tracker_id,
+        #     "compact": self.compact
+        # }
+        return {key: value for key, value in self.__dict__.items() if value is not None}
 
 class TrackerResponseBuilder():
     def __init__(self):
@@ -91,10 +86,10 @@ class TrackerResponseBuilder():
         return self
     
     def Build(self):
-        return {
-            "failure reason": self.failure_reason,
-            "warning message": self.warning_message,
-            "tracker id": self.tracker_id,
-            "peers": self.peers
-        }
-        # return {key: value for key, value in self.__dict__.items() if value is not None}
+        # return {
+        #     "failure reason": self.failure_reason,
+        #     "warning message": self.warning_message,
+        #     "tracker id": self.tracker_id,
+        #     "peers": self.peers
+        # }
+        return {key: value for key, value in self.__dict__.items() if value is not None}
