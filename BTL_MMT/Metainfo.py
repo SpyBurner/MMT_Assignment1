@@ -40,7 +40,7 @@ class MetainfoBuilder():
             #? Single file mode
             'length': None,
             #? Multifile mode
-            #? files: [{'length': None, 'path': None}]
+            #? files: [{'length': None, 'path': []}]
             'files' : []
         }
         #? announce_list: [{'ip': None, 'port': None}]
@@ -69,7 +69,7 @@ class MetainfoBuilder():
         return self
     
     def AddFile(self, length, path):
-        self.info.files.append({'length': length, 'path': path})
+        self.info['files'].append({'length': length, 'path': path})
         return self
 
     def Build(self):

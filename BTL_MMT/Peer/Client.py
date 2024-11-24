@@ -19,11 +19,35 @@ import time
 
 file_lock = threading.Lock()
 
+# read all files in path and return the data
+def get_data_from_path(path):
+    data = b''
+    for root, _, files in os.walk(path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            with open(file_path, 'rb') as f:
+                data += f.read()
+    return data
+    
+
 class ClientUploader(threading.Thread):
     def __init__(self, filePath, announce_list):
         threading.Thread.__init__(self)
         self.filePath = filePath
         self.announce_list = announce_list
+        
+        
+    def GetPieceHashes(self, piece_count):
+        piece_hashes = []
+        data = get_data_from_path(self.filePath)
+        for i in range(piece_count):
+            start = i * global_setting.PIECE_SIZE
+            end = min(start + global_setting.PIECE_SIZE, len(data))
+            piece = data[start:end]
+            piece_hash = hashlib.sha1(piece).digest()
+            piece_hashes.append(piece_hash)
+        return piece_hashes
+    
 
     def run(self):
         try:
@@ -37,46 +61,32 @@ class ClientUploader(threading.Thread):
                 })
 
             metainfo.SetPieceLength(global_setting.PIECE_SIZE)
-
-            def GetPieceHashes(file_path, piece_count):
-                piece_hashes = []
-                try:
-                    with open(file_path, 'rb') as file:
-                        for _ in range(piece_count):
-                            piece = file.read(global_setting.PIECE_SIZE)
-                            if not piece:
-                                break
-                            piece_hashes.append(hashlib.sha1(piece).digest())
-                except IOError as e:
-                    print(f"Error reading file {file_path}: {e}")
-                return piece_hashes
+            # both file name and directory name
+            metainfo.SetName(os.path.basename(self.filePath))
+            piece_count = 0
 
             if singleFileMode:
                 file_size = os.path.getsize(self.filePath)
-                metainfo.SetName(os.path.basename(self.filePath))
                 metainfo.SetLength(file_size)
-
                 piece_count = math.ceil(file_size / global_setting.PIECE_SIZE)
-                piece_hashes = GetPieceHashes(self.filePath, piece_count)
-                metainfo.SetPieces(b''.join(piece_hashes))
             else:
-                piece_hashes = []
                 total_size = 0
-
+                # loop for all files in the directory, get the relative path from the self.filePath
                 for root, _, files in os.walk(self.filePath):
                     for file in files:
                         file_path = os.path.join(root, file)
-                        relative_path = os.path.relpath(file_path, self.filePath)
-                        path_array = relative_path.split(os.sep)
-
                         file_size = os.path.getsize(file_path)
-                        metainfo.add_file(file_size, path_array)
+                        
+                        relative_path = os.path.relpath(file_path, self.filePath)
+                        segments_of_path = relative_path.split(os.sep)
+
+                        metainfo.AddFile(file_size, segments_of_path)
                         total_size += file_size
+                piece_count = math.ceil(total_size / global_setting.PIECE_SIZE)
 
-                        piece_count = math.ceil(file_size / global_setting.PIECE_SIZE)
-                        piece_hashes.extend(GetPieceHashes(file_path, piece_count))
-
-                metainfo.SetPieces(b''.join(piece_hashes))
+            # for both single file and multiple files
+            piece_hashes = self.GetPieceHashes(piece_count)
+            metainfo.SetPieces(b''.join(piece_hashes))
 
             try:
                 os.makedirs(peer_setting.METAINFO_FILE_PATH, exist_ok=True)
@@ -403,6 +413,7 @@ class ClientLister(threading.Thread):
 
 #! Create the right type of thread and start it.
 def Upload(filePath, announce_list):
+    # filePath should be absolute path
     print("Uploading file: ", filePath, " to tracker: ")
     for announce in announce_list:
         print(announce)
