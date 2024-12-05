@@ -197,8 +197,12 @@ class ServerUploader(threading.Thread):
                 if (request['type'] == pwp.Type.HANDSHAKE):
                     #? Received handshake, set info_hash and check local file
                     info_hash = request['info_hash']
-                    file = info_hash + peer_setting.TEMP_DOWNLOAD_FILE_EXTENSION
-                    metainfo = mib.Get(os.path.join(peer_setting.METAINFO_FILE_PATH, info_hash + global_setting.METAINFO_FILE_EXTENSION))
+                    try: 
+                        metainfo = mib.Get(os.path.join(peer_setting.METAINFO_FILE_PATH, info_hash + global_setting.METAINFO_FILE_EXTENSION))
+                    except FileNotFoundError:
+                        print("Metainfo not found for info_hash: " + info_hash)
+                        self.sock.close()
+                        return
                     
                     pieceLength = metainfo['info']['piece length']
                     totalLength = 0
@@ -214,6 +218,8 @@ class ServerUploader(threading.Thread):
                     
                     pieceCount = math.ceil(totalLength / pieceLength)
                     
+                    file = os.path.join(peer_setting.REPO_FILE_PATH, info_hash)
+                    
                     if os.path.exists(file):
                         response = pwp.handshake('huh?', self.server.peerID)
                     else:
@@ -225,7 +231,6 @@ class ServerUploader(threading.Thread):
                     if (file == ""):
                         response = pwp.handshake('huh?', self.server.peerID)
                     else:
-                        
                         response = pwp.bitfield(pwp.generate_bitfield(metainfo['info']['pieceCount'], metainfo['info']['pieceLength'], file))
                     
                     self.sock.sendall(bcoding.bencode(response))

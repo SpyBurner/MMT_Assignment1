@@ -114,10 +114,9 @@ class ClientUploader(threading.Thread):
             else:
                 shutil.copytree(self.filePath, repo_path)
         except OSError as e:
-            # print(f"Error copying file to repo: {e}")
-            raise(e)
+            print(f"Error copying file to repo: {e}")
+            # raise(e)
             
-
         #? Send request to all trackers
         for announce in self.announce_list:
             request = tp.TrackerRequestBuilder()
@@ -162,6 +161,8 @@ class ClientPieceRequester(threading.Thread):
     
     def run(self):
         #? Request a piece and write to file on sucess
+        print(f"Requesting piece {self.index} from peer" + self.sock.getpeername()[0])
+        
         try:
             self.sock.sendall(bcoding.bencode(pwp.request(self.index, self.begin, self.length)))
             
@@ -182,7 +183,6 @@ class ClientPieceRequester(threading.Thread):
             
         except Exception as e:
             print(f"Error in ClientPieceRequester: {e}")
-
 class ClientDownloader(threading.Thread):
     def __init__(self, metainfoPath):
         threading.Thread.__init__(self)
