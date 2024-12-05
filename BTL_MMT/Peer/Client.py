@@ -37,7 +37,7 @@ class ClientUploader(threading.Thread):
         self.announce_list = announce_list
         
         
-    def GetPieceHashes(self, piece_count):
+    def get_piece_hashes(self, piece_count):
         piece_hashes = []
         data = get_data_from_path(self.filePath)
         for i in range(piece_count):
@@ -48,80 +48,89 @@ class ClientUploader(threading.Thread):
             piece_hashes.append(piece_hash)
         return piece_hashes
     
-
     def run(self):
+        singleFileMode = os.path.isfile(self.filePath)
+        metainfo = mi.MetainfoBuilder()
+
+        for announce in self.announce_list:
+            metainfo.add_announce({
+                'ip': announce[0],
+                'port': int(announce[1])
+            })
+
+        metainfo.set_piece_length(global_setting.PIECE_SIZE)
+        # both file name and directory name
+        print('basename', os.path.basename(self.filePath))
+        metainfo.set_name(os.path.basename(self.filePath))
+        piece_count = 0
+
+        if singleFileMode:
+            file_size = os.path.getsize(self.filePath)
+            metainfo.set_length(file_size)
+            piece_count = math.ceil(file_size / global_setting.PIECE_SIZE)
+        else:
+            total_size = 0
+            # loop for all files in the directory, get the relative path from the self.filePath
+            for root, _, files in os.walk(self.filePath):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    file_size = os.path.getsize(file_path)
+                    
+                    relative_path = os.path.relpath(file_path, self.filePath)
+                    segments_of_path = relative_path.split(os.sep)
+
+                    metainfo.add_file(file_size, segments_of_path)
+                    total_size += file_size
+            piece_count = math.ceil(total_size / global_setting.PIECE_SIZE)
+
+        # for both single file and multiple files
+        piece_hashes = self.get_piece_hashes(piece_count)
+        metainfo.set_pieces(b''.join(piece_hashes))
+
         try:
-            singleFileMode = os.path.isfile(self.filePath)
-            metainfo = mi.MetainfoBuilder()
+            os.makedirs(peer_setting.METAINFO_FILE_PATH, exist_ok=True)
+        except OSError as e:
+            print(f"Error creating metainfo directory: {e}")
 
-            for announce in self.announce_list:
-                metainfo.AddAnnounce({
-                    'ip': announce[0],
-                    'port': int(announce[1])
-                })
+        print(f"Metainfo: {metainfo.build()}")
 
-            metainfo.SetPieceLength(global_setting.PIECE_SIZE)
-            # both file name and directory name
-            metainfo.SetName(os.path.basename(self.filePath))
-            piece_count = 0
+        # Build into dictionary
+        metainfo = metainfo.build()
+        
+        infohash = hashlib.sha1(bcoding.bencode(metainfo['info'])).hexdigest()
+        
+        #? Write metainfo to file with infohash as filename           
+        metainfo_path = os.path.join(peer_setting.METAINFO_FILE_PATH, infohash + global_setting.METAINFO_FILE_EXTENSION)
+        with open(metainfo_path, 'wb') as f:
+            f.write(bcoding.bencode(metainfo))
 
-            if singleFileMode:
-                file_size = os.path.getsize(self.filePath)
-                metainfo.SetLength(file_size)
-                piece_count = math.ceil(file_size / global_setting.PIECE_SIZE)
-            else:
-                total_size = 0
-                # loop for all files in the directory, get the relative path from the self.filePath
-                for root, _, files in os.walk(self.filePath):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        file_size = os.path.getsize(file_path)
-                        
-                        relative_path = os.path.relpath(file_path, self.filePath)
-                        segments_of_path = relative_path.split(os.sep)
-
-                        metainfo.AddFile(file_size, segments_of_path)
-                        total_size += file_size
-                piece_count = math.ceil(total_size / global_setting.PIECE_SIZE)
-
-            # for both single file and multiple files
-            piece_hashes = self.GetPieceHashes(piece_count)
-            metainfo.SetPieces(b''.join(piece_hashes))
-
-            try:
-                os.makedirs(peer_setting.METAINFO_FILE_PATH, exist_ok=True)
-            except OSError as e:
-                print(f"Error creating metainfo directory: {e}")
-
-            infohash = hashlib.sha1(bcoding.bencode(metainfo.info)).hexdigest()
+        #? Copy file to repo
+        repo_path = os.path.join(peer_setting.REPO_FILE_PATH, infohash)
+        try:
+            os.makedirs(peer_setting.REPO_FILE_PATH, exist_ok=True)
             
-            #? Write metainfo to file with infohash as filename           
-            metainfo_path = os.path.join(peer_setting.METAINFO_FILE_PATH, infohash + global_setting.METAINFO_FILE_EXTENSION)
-            with open(metainfo_path, 'wb') as f:
-                f.write(bcoding.bencode(metainfo.Build()))
-
-            #? Copy file to repo
-            repo_path = os.path.join(peer_setting.REPO_FILE_PATH, infohash)
-            try:
-                os.makedirs(repo_path, exist_ok=True)
+            if (singleFileMode):
                 shutil.copy(self.filePath, repo_path)
-            except OSError as e:
-                print(f"Error copying file to repo: {e}")
+            else:
+                shutil.copytree(self.filePath, repo_path)
+        except OSError as e:
+            # print(f"Error copying file to repo: {e}")
+            raise(e)
+            
 
-            for announce in self.announce_list:
-                request = tp.TrackerRequestBuilder()
-                request.set_info_hash(infohash)
-                request.set_port(Server.get_server().port)
-                request.set_event("started")
-                request.set_uploader(0)
-                request.set_downloaded(0)
-                request.set_left(0)
-                request.set_peer_id(Server.get_server().peerID)
+        #? Send request to all trackers
+        for announce in self.announce_list:
+            request = tp.TrackerRequestBuilder()
+            request.set_info_hash(infohash)
+            request.set_port(Server.get_server().port)
+            request.set_event("started")
+            request.set_uploader(0)
+            request.set_downloaded(0)
+            request.set_left(0)
+            request.set_peer_id(Server.get_server().peerID)
 
-                requester = Server.ServerRequester(Server.get_server(), announce[0], announce[1], request)
-                requester.start()
-        except Exception as e:
-            print(f"Error in ClientUploader: {e}")
+            requester = Server.ServerRequester(Server.get_server(), announce[0], announce[1], request)
+            requester.start()
 
 class ClientKeepAlive(threading.Thread):
     def __init__(self, sock, interval):
@@ -133,7 +142,7 @@ class ClientKeepAlive(threading.Thread):
     def run(self):
         while self.isRunning:
             try:
-                self.sock.sendall(bcoding.bencode(pwp.KeepAlive()))
+                self.sock.sendall(bcoding.bencode(pwp.keep_alive()))
                 time.sleep(self.interval)
             except Exception as e:
                 print(f"Error in ClientKeepAlive: {e}")
@@ -154,7 +163,7 @@ class ClientPieceRequester(threading.Thread):
     def run(self):
         #? Request a piece and write to file on sucess
         try:
-            self.sock.sendall(bcoding.bencode(pwp.Request(self.index, self.begin, self.length)))
+            self.sock.sendall(bcoding.bencode(pwp.request(self.index, self.begin, self.length)))
             
             response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
             response = bcoding.bdecode(response)
@@ -274,7 +283,7 @@ class ClientDownloader(threading.Thread):
                     requester.start()
                 return
             
-            bitfield = pwp.Bitfield(pwp.GenerateBitfield(pieces, pieceCount, pieceLength, tempFilePath))
+            bitfield = pwp.bitfield(pwp.generate_bitfield(pieces, pieceCount, pieceLength, tempFilePath))
             
             print("Current number of pieces downloaded: ", sum(bitfield['bitfield']))
             
@@ -308,7 +317,7 @@ class ClientDownloader(threading.Thread):
                     continue
                 
                 #? Send handshake
-                handshake = pwp.Handshake(info_hash, Server.get_server().peerID)
+                handshake = pwp.handshake(info_hash, Server.get_server().peerID)
                 sock.sendall(bcoding.bencode(handshake))
                 
                 print("[Handshake] sent to peer: ", peer['ip'])

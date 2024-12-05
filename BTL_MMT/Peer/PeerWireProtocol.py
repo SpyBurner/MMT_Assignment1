@@ -15,25 +15,25 @@ class Type:
     PORT = 'port'
 
     
-def Handshake(info_hash, peer_id):      
+def handshake(info_hash, peer_id):      
     return {
         'type' : Type.HANDSHAKE,
         'info_hash': info_hash,
         'peer_id': peer_id,
     }
     
-def KeepAlive():
+def keep_alive():
     return {
         'type': Type.KEEP_ALIVE,
     }
 
-def Bitfield(bitfield):
+def bitfield(bitfield):
     return {
         'type': Type.BITFIELD,
         'bitfield': bitfield,
     }
 
-def Request(index, begin, length):
+def request(index, begin, length):
     return {
         'type': Type.REQUEST,
         'index': index,
@@ -41,7 +41,7 @@ def Request(index, begin, length):
         'length': length,        
     }
 
-def Piece(index, begin, block):
+def piece(index, begin, block):
     return {
         'type': Type.PIECE,
         'index': index,
@@ -49,7 +49,7 @@ def Piece(index, begin, block):
         'block': block
     }
 
-def GenerateBitfield(pieces, pieceCount, pieceLength, filePath):
+def generate_bitfield(pieces, pieceCount, pieceLength, filePath):
     bitfield = [0] * pieceCount
     
     try:

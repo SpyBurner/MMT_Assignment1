@@ -51,8 +51,8 @@ class ServerRequester(threading.Thread):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((self.trackerIP, self.trackerPort))
         
-        if (self.server.UniqueMapKey(self.trackerIP, self.trackerPort) in self.server.trackerIDMapping):
-            self.request.SetTrackerID(self.server.trackerIDMapping[self.server.UniqueMapKey(self.trackerIP, self.trackerPort)])
+        if (self.server.unique_map_key(self.trackerIP, self.trackerPort) in self.server.trackerIDMapping):
+            self.request.set_tracker_id(self.server.trackerIDMapping[self.server.unique_map_key(self.trackerIP, self.trackerPort)])
                 
         builtRequest = self.request.Build()
         
@@ -79,8 +79,8 @@ class ServerRequester(threading.Thread):
         # print("[Regular announcement] To tracker: {}:{}".format(self.trackerIP, self.trackerPort) + " for info_hash: " + builtRequest['info_hash'])
 
         if ('tracker_id' in response_decode):        
-            self.server.MapTrackerID(self.trackerIP, self.trackerPort, response_decode['tracker_id'])
-        self.server.MapPeer(builtRequest['info_hash'], response_decode['peers'])
+            self.server.map_tracker_id(self.trackerIP, self.trackerPort, response_decode['tracker_id'])
+        self.server.map_peer(builtRequest['info_hash'], response_decode['peers'])
         
         #? Call callback if it exists
         if self.callback:
@@ -215,24 +215,24 @@ class ServerUploader(threading.Thread):
                     pieceCount = math.ceil(totalLength / pieceLength)
                     
                     if os.path.exists(file):
-                        response = pwp.Handshake('huh?', self.server.peerID)
+                        response = pwp.handshake('huh?', self.server.peerID)
                     else:
-                        response = pwp.Handshake(request['info_hash'], self.server.peerID)
+                        response = pwp.handshake(request['info_hash'], self.server.peerID)
                         
                     self.sock.sendall(bcoding.bencode(response))
                 elif (request['type'] == pwp.Type.BITFIELD):
                     #? Respond with bitfield
                     if (file == ""):
-                        response = pwp.Handshake('huh?', self.server.peerID)
+                        response = pwp.handshake('huh?', self.server.peerID)
                     else:
                         
-                        response = pwp.Bitfield(pwp.GenerateBitfield(metainfo['info']['pieceCount'], metainfo['info']['pieceLength'], file))
+                        response = pwp.bitfield(pwp.generate_bitfield(metainfo['info']['pieceCount'], metainfo['info']['pieceLength'], file))
                     
                     self.sock.sendall(bcoding.bencode(response))
                 elif (request['type'] == pwp.Type.REQUEST):
                     #? Respond with piece
                     if (file == ""):
-                        response = pwp.Handshake('huh?', self.server.peerID)
+                        response = pwp.handshake('huh?', self.server.peerID)
                         self.sock.sendall(bcoding.bencode(response))
                         continue
                     
@@ -244,7 +244,7 @@ class ServerUploader(threading.Thread):
                         f.seek(index * peer_setting.PIECE_SIZE + begin)
                         block = f.read(length)
                     
-                    response = pwp.Piece(index, begin, block)
+                    response = pwp.piece(index, begin, block)
                     self.sock.sendall(bcoding.bencode(response))
                 
                 elif (request['type'] == pwp.Type.KEEP_ALIVE):
