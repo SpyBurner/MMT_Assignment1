@@ -8,7 +8,7 @@ import global_setting
 import bcoding
 
 #? Get all metainfo files in the directory, transform to dictionary, and return all
-def GetAll(metainfoPath):
+def get_all(metainfoPath):
     
     result = []
     

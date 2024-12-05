@@ -149,14 +149,14 @@ class Tracker():
             
             # print(f"[ACTIVE CONNECTIONS] {threading.active_count() - 1}") # -1 because the main thread is also counted as a thread
         
-def Start():
+def start():
     tracker = Tracker(TRACKER_DEFAULT_PORT)
     tracker.start()
 
-def Stat(self):
+def stat(self):
     print("Tracker Stats")
         
-def List(self):
+def list(self):
     print("List Files in Tracker")
     
     
