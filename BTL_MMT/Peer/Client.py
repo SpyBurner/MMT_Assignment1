@@ -100,15 +100,15 @@ class ClientUploader(threading.Thread):
 
             for announce in self.announce_list:
                 request = tp.TrackerRequestBuilder()
-                request.SetInfoHash(infohash)
-                request.SetPort(Server.GetServer().port)
-                request.SetEvent("started")
-                request.SetUploaded(0)
-                request.SetDownloaded(0)
-                request.SetLeft(0)
-                request.SetPeerID(Server.GetServer().peerID)
+                request.set_info_hash(infohash)
+                request.set_port(Server.get_server().port)
+                request.set_event("started")
+                request.set_uploader(0)
+                request.set_downloaded(0)
+                request.set_left(0)
+                request.set_peer_id(Server.get_server().peerID)
 
-                requester = Server.ServerRequester(Server.GetServer(), announce[0], announce[1], request)
+                requester = Server.ServerRequester(Server.get_server(), announce[0], announce[1], request)
                 requester.start()
         except Exception as e:
             print(f"Error in ClientUploader: {e}")
@@ -193,16 +193,16 @@ class ClientDownloader(threading.Thread):
         except Exception as e:
             print("Metainfo file copy error: ", e)
         
-        server = Server.GetServer()
+        server = Server.get_server()
         
         request = tp.TrackerRequestBuilder()
-        request.SetInfoHash(info_hash)
-        request.SetPort(server.port)
-        request.SetEvent("started")
-        request.SetUploaded(0)
-        request.SetDownloaded(0)
-        request.SetLeft(0)
-        request.SetPeerID(server.peerID)
+        request.set_info_hash(info_hash)
+        request.set_port(server.port)
+        request.set_event("started")
+        request.set_uploader(0)
+        request.set_downloaded(0)
+        request.set_left(0)
+        request.set_peer_id(server.peerID)
         
         requesters = []
         
@@ -257,7 +257,7 @@ class ClientDownloader(threading.Thread):
             if (tryCount > tryLimit):
                 print("Download failed after ", tryLimit, " attempts.")
                 #? Leave swarm
-                request.SetEvent("stopped")
+                request.set_event("stopped")
                 for announce in metainfo['announce_list']:
                     requester = Server.ServerRequester(server, announce['ip'], announce['port'], request)  
                     requesters.append(requester)
@@ -272,7 +272,7 @@ class ClientDownloader(threading.Thread):
             if (sum(bitfield['bitfield']) == pieceCount):
                 break
             
-            peerList = Server.GetServer().peerMapping[info_hash]
+            peerList = Server.get_server().peerMapping[info_hash]
             
             #? Print list of peers
             print("[Acquired peer list] ")
@@ -282,7 +282,7 @@ class ClientDownloader(threading.Thread):
             # Format: (socket, bitfield)
             peerConnections = []
             keepAliveThreads = []
-            server = Server.GetServer()
+            server = Server.get_server()
             
             for peer in peerList:
                 #? Skip self
@@ -298,7 +298,7 @@ class ClientDownloader(threading.Thread):
                     continue
                 
                 #? Send handshake
-                handshake = pwp.Handshake(info_hash, Server.GetServer().peerID)
+                handshake = pwp.Handshake(info_hash, Server.get_server().peerID)
                 sock.sendall(bcoding.bencode(handshake))
                 
                 print("[Handshake] sent to peer: ", peer['ip'])
@@ -393,7 +393,6 @@ class ClientDownloader(threading.Thread):
         
         print("Download for file(s) ", metainfo['info']['name'], " with info_hash ", info_hash, " completed.")        
             
-        
 class ClientLister(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
@@ -402,7 +401,7 @@ class ClientLister(threading.Thread):
         print("Implement listing logic here.")
 
 #! Create the right type of thread and start it.
-def Upload(filePath, announce_list):
+def upload(filePath, announce_list):
     print("Uploading file: ", filePath, " to tracker: ")
     for announce in announce_list:
         print(announce)
@@ -410,7 +409,7 @@ def Upload(filePath, announce_list):
     uploader = ClientUploader(filePath, announce_list)
     uploader.start()
 
-def Download(metainfo):
+def download(metainfo):
     print("Downloading file with metainfo: ", metainfo)
     
     downloader = ClientDownloader(metainfo)

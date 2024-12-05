@@ -1,3 +1,4 @@
+import argparse
 import threading
 import os
 import sys
@@ -16,7 +17,7 @@ import global_setting
 import PeerWireProtocol as pwp
 import math
 
-def GetHostIP():
+def get_host_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(('8.8.8.8',1))
@@ -98,28 +99,27 @@ class ServerRegularAnnouncer(threading.Thread):
     
     def run(self):
         #? Send start request to all trackers, runs once
-        #? Only handle files already downloaded at startup, for newly uploaded files are handled in ClientUploader
         startRequest = tp.TrackerRequestBuilder()
-        startRequest.SetPeerID(self.peer_id)
-        startRequest.SetPort(self.peer_port)
-        metainfos = mib.GetAll(peer_setting.METAINFO_FILE_PATH)
+        startRequest.set_peer_id(self.peer_id)
+        startRequest.set_port(self.peer_port)
+        metainfos = mib.get_all(peer_setting.METAINFO_FILE_PATH)
         if len(metainfos) == 0:
             print("No metainfo found.")
         else: 
             for metainfo in metainfos:
                 
                 info_hash = hashlib.sha1(bcoding.bencode(metainfo['info'])).hexdigest()       
-                startRequest.SetInfoHash(info_hash)
-                startRequest.SetPort(self.peer_port)
+                startRequest.set_info_hash(info_hash)
+                startRequest.set_port(self.peer_port)
                 
-                startRequest.SetUploaded(0)
+                startRequest.set_uploader(0)
                 
                 #TODO Change after local file mapping implementation
-                startRequest.SetDownloaded(0)
-                startRequest.SetLeft(0)
+                startRequest.set_downloaded(0)
+                startRequest.set_left(0)
                 
-                startRequest.SetEvent('started')
-                startRequest.SetTrackerID(None)       
+                startRequest.set_event('started')
+                startRequest.set_tracker_id(None)       
                 
                 for i in range(len(metainfo['announce_list'])):
                     announce = metainfo['announce_list'][i]
@@ -133,8 +133,8 @@ class ServerRegularAnnouncer(threading.Thread):
         #? Regularly announce to all trackers, run every interval
         lastAnnounce = time.time()
         regularRequest = tp.TrackerRequestBuilder()
-        regularRequest.SetPeerID(self.peer_id)
-        regularRequest.SetPort(self.peer_port)
+        regularRequest.set_peer_id(self.peer_id)
+        regularRequest.set_port(self.peer_port)
         while True:
             #? Check if the interval has passed
             if (time.time() - lastAnnounce < self.interval):
@@ -142,8 +142,8 @@ class ServerRegularAnnouncer(threading.Thread):
             
             lastAnnounce = time.time()
             
-            #? Update metainfos
-            metainfos = mib.GetAll(peer_setting.METAINFO_FILE_PATH)
+            #? Update new metainfos
+            metainfos = mib.get_all(peer_setting.METAINFO_FILE_PATH)
             
             if len(metainfos) == 0:
                 continue
@@ -151,22 +151,22 @@ class ServerRegularAnnouncer(threading.Thread):
             for metainfo in metainfos:
                 info_hash = hashlib.sha1(bcoding.bencode(metainfo['info'])).hexdigest()
                 
-                regularRequest.SetInfoHash(info_hash)
-                regularRequest.SetPort(self.peer_port)
+                regularRequest.set_info_hash(info_hash)
+                regularRequest.set_port(self.peer_port)
                 
                 #TODO Change after local file mapping implementation
-                regularRequest.SetUploaded(0)
-                regularRequest.SetDownloaded(0)
-                regularRequest.SetLeft(0)
+                regularRequest.set_uploader(0)
+                regularRequest.set_downloaded(0)
+                regularRequest.set_left(0)
                 
-                regularRequest.SetEvent(None)
+                regularRequest.set_event(None)
                 
                 for announce in metainfo['announce_list']:
                     trackerIP = announce['ip']
                     trackerPort = announce['port']
-                    trackerID = self.server.trackerIDMapping[self.server.UniqueMapKey(trackerIP, trackerPort)]
+                    trackerID = self.server.trackerIDMapping[self.server.unique_map_key(trackerIP, trackerPort)]
                     
-                    regularRequest.SetTrackerID(trackerID)
+                    regularRequest.set_tracker_id(trackerID)
                     
                     requester = ServerRequester(self.server, trackerIP, trackerPort, regularRequest)
                     requester.start()
@@ -282,7 +282,7 @@ class ServerConnectionLoopHandler(threading.Thread):
 class Server():
     def __init__(self):
         self.isRunning = True
-        self.ip, self.port = GetHostIP()
+        self.ip, self.port = get_host_ip()
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serverSocket.bind((self.ip, self.port))
         
@@ -305,48 +305,63 @@ class Server():
         #? Store list of peers for each info_hash, consumed in ClientDownloader
         self.peerMapping = {}
     
-    def Start(self):
+    def start(self):
         connectionLoopHandler = ServerConnectionLoopHandler(self)
         connectionLoopHandler.start()
         
+        parser = argparse.ArgumentParser(prog='Server_cli', description='Server CLI for Peer-to-Peer Transmission tasks')
+        subparsers = parser.add_subparsers(dest='operation', help='Choose an operation')
+
+        # Clear task
+        clear_parser = subparsers.add_parser('clear', help='Clear console')
+
+        # Exit task
+        exit_parser = subparsers.add_parser('exit', help='Stop the server')
+
+        # Upload task
+        upload_parser = subparsers.add_parser('upload', help='Upload a file')
+        upload_parser.add_argument('--filePath', type=str, required=True, help='Path to the file to upload')
+        upload_parser.add_argument('--tracker', type=str, action='append', nargs=2, metavar=('IP', 'PORT'), required=True, help='Tracker IP and port')
+
+        # Download task
+        download_parser = subparsers.add_parser('download', help='Download a file')
+        download_parser.add_argument('--metainfo', type=str, required=True, help='Path to the metainfo file')
+
+        parser.print_usage();
         while self.isRunning:
-            print("Enter 'exit' to stop the server: ")
             
-            operation = input()
-            
-            if operation == 'exit':
+            # Parse the input
+            operation = input("Enter operation: ")
+            try:
+                args = parser.parse_args(operation.split())
+            except:
+                continue
+            if (args.operation == 'clear'):
+                os.system('cls' if os.name == 'nt' else 'clear')
+            elif args.operation == 'exit':
                 self.isRunning = False
-            elif operation == 'upload':
-                print("Enter file path: ")
-                filePath = input()
-                
-                print("Enter tracker ip: ")
-                trackerIP = input()
-                
-                print("Enter tracker port: ")
-                trackerPort = input()
-                
-                Client.Upload(filePath, [[trackerIP, int(trackerPort)]])
-            elif operation == 'download':
-                print("Enter metainfo file path: ")
-                metainfo = input()
-                
-                Client.Download(metainfo)
-    
+            elif args.operation == 'upload':
+                filePath = args.filePath
+                trackers = args.tracker
+                tracker_list = [[ip, int(port)] for ip, port in trackers]
+                Client.upload(filePath, tracker_list)
+            elif args.operation == 'download':
+                metainfo = args.metainfo
+                Client.download(metainfo)
         
         connectionLoopHandler.stop()
         connectionLoopHandler.join()
         
         self.serverSocket.close()
     
-    def UniqueMapKey(self, ip, port):
+    def unique_map_key(self, ip, port):
         return ip + ":" + str(port)
     
-    def MapTrackerID(self, tracker_ip, tracker_port, tracker_id):           
+    def map_tracker_id(self, tracker_ip, tracker_port, tracker_id):           
         # print("[Mapping tracker_id] " + tracker_id + " for tracker: " + tracker_ip + ":" + str(tracker_port))
-        self.trackerIDMapping[self.UniqueMapKey(tracker_ip, tracker_port)] = tracker_id
+        self.trackerIDMapping[self.unique_map_key(tracker_ip, tracker_port)] = tracker_id
     
-    def MapPeer(self, info_hash, peerList):
+    def map_peer(self, info_hash, peerList):
         # print("[Mapping peer list] For info_hash: " + info_hash)
         self.peerMapping[info_hash] = []
         for peer in peerList:
@@ -362,12 +377,12 @@ class Server():
             })
         
 server = None
-def Start():
+def start():
     global server
     server = Server()
-    server.Start()
+    server.start()
     
-def GetServer():
+def get_server():
     return server
 
 
