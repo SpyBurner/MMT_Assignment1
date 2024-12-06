@@ -82,7 +82,7 @@ def generate_bitfield(pieces, pieceCount, pieceLength, filePath):
     print(f"Piece count: {pieceCount}")
     print(f"Piece length: {pieceLength}")
     print(f"File path: {filePath}")
-    print(f"pieces: ", pieces)
+    # print(f"pieces: ", pieces)
     
     bitfield = [0] * pieceCount
     
@@ -91,8 +91,8 @@ def generate_bitfield(pieces, pieceCount, pieceLength, filePath):
         for i in range(pieceCount):
             piece = data[i * pieceLength : (i + 1) * pieceLength]
             metainfo_piece = pieces[i * 20 : (i + 1) * 20]
-            print(f"Piece {i} hash: {hashlib.sha1(piece).digest()}")
-            print(f"Metainfo piece {i} hash: {metainfo_piece}")
+            # print(f"Piece {i} hash: {hashlib.sha1(piece).digest()}")
+            # print(f"Metainfo piece {i} hash: {metainfo_piece}")
             if hashlib.sha1(piece).digest() == metainfo_piece:
                 bitfield[i] = 1
             print('Bit: ', bitfield[i])

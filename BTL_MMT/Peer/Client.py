@@ -159,13 +159,11 @@ class ClientPieceRequester(threading.Thread):
             
             print('Request sent')
             
-            print('Waitint for response...')
+            print('Waiting for response...')
             response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
             print('Response received')
             
             response = bcoding.bdecode(response)
-            
-            print('Response: ', response)
             
             if (response['type'] != pwp.Type.PIECE):
                 print("Peer did not respond with correct piece.")
