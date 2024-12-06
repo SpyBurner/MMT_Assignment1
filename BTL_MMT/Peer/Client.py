@@ -469,6 +469,10 @@ class ClientLister(threading.Thread):
 #! Create the right type of thread and start it.
 def upload(filePath, announce_list):
     print("Uploading file: ", filePath, " to tracker: ")
+    
+    if (filePath[0] == '"' and filePath[-1] == '"'):
+        filePath = filePath[1:-1]
+    
     for announce in announce_list:
         print(announce)
 
@@ -477,6 +481,9 @@ def upload(filePath, announce_list):
 
 def download(metainfo):
     print("Downloading file with metainfo: ", metainfo)
+    
+    if (metainfo[0] == '"' and metainfo[-1] == '"'):
+        metainfo = metainfo[1:-1]
     
     downloader = ClientDownloader(metainfo)
     downloader.start()

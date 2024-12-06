@@ -31,12 +31,13 @@ def get_host_ip():
     return (ip, port)
 
 class ServerRequester(threading.Thread):
-    def __init__(self, server, trackerIP, trackerPort, request):
+    def __init__(self, server, trackerIP, trackerPort, request, await_response=True):
         threading.Thread.__init__(self, daemon=True)
         self.server = server
         self.trackerIP = trackerIP
         self.trackerPort = trackerPort
         self.request = request
+        self.await_response = await_response
         
         self.callback = None
     
@@ -59,6 +60,10 @@ class ServerRequester(threading.Thread):
         # print(builtRequest)
                 
         sock.sendall(bcoding.bencode(builtRequest))
+        
+        if not self.await_response:
+            sock.close()
+            return
         
         #? Receive response from tracker
         response = sock.recv(global_setting.TRACKER_RESPONSE_SIZE)
@@ -135,7 +140,7 @@ class ServerRegularAnnouncer(threading.Thread):
         regularRequest = tp.TrackerRequestBuilder()
         regularRequest.set_peer_id(self.peer_id)
         regularRequest.set_port(self.peer_port)
-        while True:
+        while get_server().isRunning:
             #? Check if the interval has passed
             if (time.time() - lastAnnounce < self.interval):
                 continue
@@ -172,14 +177,9 @@ class ServerRegularAnnouncer(threading.Thread):
                     
                     regularRequest.set_tracker_id(trackerID)
                     
-                    requester = ServerRequester(self.server, trackerIP, trackerPort, regularRequest)
+                    requester = ServerRequester(self.server, trackerIP, trackerPort, regularRequest, (get_server().isRunning))
                     requester.start()
                 
-                if not get_server().isRunning:
-                    break
-                
-                # Sleep for the interval
-                time.sleep(self.interval)
         
 class ServerUploader(threading.Thread):
     def __init__(self, server, sock, addr, timeout=peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT):
@@ -384,7 +384,7 @@ class Server():
             elif args.operation == 'upload':
                 filePath = args.filePath
                 trackers = args.tracker
-                tracker_list = [[ip, int(port)] for ip, port in trackers]
+                tracker_list = [[ip, int(port)] for ip, port in trackers]                
                 Client.upload(filePath, tracker_list)
             elif args.operation == 'download':
                 metainfo = args.metainfo
