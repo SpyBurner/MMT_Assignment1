@@ -103,6 +103,7 @@ class ClientUploader(threading.Thread):
             if (singleFileMode):
                 shutil.copy(self.filePath, repo_path)
             else:
+                repo_path = os.path.join(repo_path, os.path.basename(self.filePath))
                 shutil.copytree(self.filePath, repo_path)
         except OSError as e:
             print(f"Error copying file to repo: {e}")
@@ -121,6 +122,8 @@ class ClientUploader(threading.Thread):
 
             requester = Server.ServerRequester(Server.get_server(), announce[0], announce[1], request)
             requester.start()
+            
+        print("Upload complete for file ", self.filePath, " with infohash ", infohash)
 
 class ClientKeepAlive(threading.Thread):
     def __init__(self, sock, interval):
@@ -415,25 +418,27 @@ class ClientDownloader(threading.Thread):
         
         #TODO Multiple file case where
         #? Map temp file to the actual file(s)
-        # if isSingleFile:
-        #     try:
-        #         os.rename(tempFilePath, os.path.join(peer_setting.REPO_FILE_PATH, info_hash, metainfo['info']['name']))
-        #     except Exception as e:
-        #         print("Error renaming file: ", e)
+        if isSingleFile:
+            try:
+                os.rename(tempFilePath, os.path.join(peer_setting.REPO_FILE_PATH, info_hash, metainfo['info']['name']))
+            except Exception as e:
+                print("Error renaming file: ", e)
             
-        # else:
-        #     try:
-        #         with open(tempFilePath, 'rb') as tempFile:
-        #             for file in metainfo['info']['files']:
-        #                 filePath = os.path.join(peer_setting.REPO_FILE_PATH, info_hash, *file['path'])
-        #                 fileLength = file['length']
+        else:
+            try:               
+                with open(tempFilePath, 'rb') as tempFile:
+                    for file in metainfo['info']['files']:
+                        filePath = os.path.join(peer_setting.REPO_FILE_PATH, info_hash, metainfo['info']['name'], *file['path'])
+                        fileLength = file['length']
                         
-        #                 os.makedirs(os.path.dirname(filePath), exist_ok=True)
+                        os.makedirs(os.path.dirname(filePath), exist_ok=True)
                         
-        #                 with open(filePath, 'wb') as f:
-        #                     f.write(tempFile.read(fileLength))
-        #     except Exception as e:
-        #         print("Error in file mapping ", e)
+                        with open(filePath, 'wb') as f:
+                            f.write(tempFile.read(fileLength))
+                # Delete temp file
+                os.remove(tempFilePath)
+            except Exception as e:
+                print("Error in file mapping ", e)
         
         print("Download for file(s) ", metainfo['info']['name'], " with info_hash ", info_hash, " completed.")        
             

@@ -1,5 +1,8 @@
 import hashlib
 import os
+import threading
+
+file_lock = threading.Lock()
 
 # read all files in path and return the data
 def get_data_from_path(path):
@@ -9,9 +12,11 @@ def get_data_from_path(path):
     # Single file
     if (os.path.isfile(path)):
         # print("Path is a file")
+        file_lock.acquire()
         with open(path, 'rb') as f:
             data += f.read()
             # print('Data: ', data)
+        file_lock.release()
         return data
     
     # Directory
@@ -20,11 +25,15 @@ def get_data_from_path(path):
         for file in files:
             # print('Reading file: ', file)
             file_path = os.path.join(root, file)
+            
+            file_lock.acquire()
+            
             with open(file_path, 'rb') as f:
                 current_data = f.read()
                 # print('Current data: ', current_data)
                 data += current_data
                 
+            file_lock.release()
     # print('Data: ', data)
     return data
 
@@ -42,7 +51,6 @@ class Type:
     CANCEL = 'cancel'
     PORT = 'port'
 
-    
 def handshake(info_hash, peer_id):      
     return {
         'type' : Type.HANDSHAKE,
@@ -76,7 +84,7 @@ def piece(index, begin, block):
         'begin': begin,
         'block': block
     }
-
+    
 def generate_bitfield(pieces, pieceCount, pieceLength, filePath):
     # print('Generating bitfield...')
     
