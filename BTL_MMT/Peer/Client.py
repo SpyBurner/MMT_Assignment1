@@ -290,6 +290,16 @@ class ClientDownloader(threading.Thread):
                     requester = Server.ServerRequester(server, announce['ip'], announce['port'], stop_request)  
                     requesters.append(requester)
                     requester.start()
+                                    #? Delete temp file
+                try:
+                    os.remove(tempFilePath)
+                except Exception as e:
+                    print("Error deleting temp file: ", e)
+                #? Delete metainfo file
+                try:
+                    os.remove(os.path.join(peer_setting.METAINFO_FILE_PATH, info_hash + global_setting.METAINFO_FILE_EXTENSION))
+                except Exception as e:
+                    print("Error deleting metainfo file: ", e)
                 return
             
             this_bitfield = pwp.bitfield(pwp.generate_bitfield(pieces, pieceCount, pieceLength, tempFilePath))
