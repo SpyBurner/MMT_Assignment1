@@ -8,7 +8,7 @@ import global_setting
 import bcoding
 
 #? Get all metainfo files in the directory, transform to dictionary, and return all
-def GetAll(metainfoPath):
+def get_all(metainfoPath):
     
     result = []
     
@@ -40,7 +40,7 @@ class MetainfoBuilder():
             #? Single file mode
             'length': None,
             #? Multifile mode
-            #? files: [{'length': None, 'path': None}]
+            #? files: [{'length': None, 'path': []}]
             'files' : []
         }
         #? announce_list: [{'ip': None, 'port': None}]
@@ -49,31 +49,32 @@ class MetainfoBuilder():
         #? Example
         #? self.announce_list.append({'ip': None, 'port': None})
             
-    def AddAnnounce(self, announce):
+    def add_announce(self, announce):
         self.announce_list.append(announce)
         return self
 
-    def SetPieceLength(self, piece_length):
+    def set_piece_length(self, piece_length):
         self.info['piece length'] = piece_length
         return self
 
-    def SetPieces(self, pieces):
+    def set_pieces(self, pieces):
         self.info['pieces'] = pieces
 
-    def SetName(self, name):
+    def set_name(self, name):
         self.info['name'] = name
         return self
 
-    def SetLength(self, length):
+    def set_length(self, length):
         self.info['length'] = length
         return self
     
-    def AddFile(self, length, path):
-        self.info.files.append({'length': length, 'path': path})
+    def add_file(self, length, path):
+        self.info['files'].append({'length': length, 'path': path})
         return self
 
-    def Build(self):
+    def build(self):
+        info = {k: v for k, v in self.info.items() if v is not None}
         return {
-            'info': self.info,
+            'info': info,
             'announce_list': self.announce_list
         }

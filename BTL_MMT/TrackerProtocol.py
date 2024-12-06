@@ -16,39 +16,39 @@ class TrackerRequestBuilder():
         self.event = None
         self.tracker_id = None
 
-    def SetInfoHash(self, info_hash):
+    def set_info_hash(self, info_hash):
         self.info_hash = info_hash
         return self
     
-    def SetPeerID(self, peer_id):
+    def set_peer_id(self, peer_id):
         self.peer_id = peer_id
         return self
     
-    def SetPort(self, port):
+    def set_port(self, port):
         self.port = port
         return self
     
-    def SetUploaded(self, uploaded):
+    def set_uploaded(self, uploaded):
         self.uploaded = uploaded
         return self
     
-    def SetDownloaded(self, downloaded):
+    def set_downloaded(self, downloaded):
         self.downloaded = downloaded
         return self
     
-    def SetLeft(self, left):
+    def set_left(self, left):
         self.left = left
         return self
     
-    def SetEvent(self, event):
+    def set_event(self, event):
         self.event = event
         return self
     
-    def SetTrackerID(self, tracker_id):
+    def set_tracker_id(self, tracker_id):
         self.tracker_id = tracker_id
         return self
     
-    def Build(self):
+    def build(self):
         # return {
         #     "info_hash": self.info_hash,
         #     "peer_id": self.peer_id,
@@ -69,23 +69,23 @@ class TrackerResponseBuilder():
         self.tracker_id = None
         self.peers = None
     
-    def SetFailureReason(self, failure_reason):
+    def set_failure_reason(self, failure_reason):
         self.failure_reason = failure_reason
         return self
     
-    def SetWarningMessage(self, warning_message):
+    def set_warning_message(self, warning_message):
         self.warning_message = warning_message
         return self
 
-    def SetTrackerId(self, tracker_id):
+    def set_tracker_id(self, tracker_id):
         self.tracker_id = tracker_id
         return self
     
-    def SetPeers(self, peers):
+    def set_peers(self, peers):
         self.peers = peers
         return self
     
-    def Build(self):
+    def build(self):
         # return {
         #     "failure reason": self.failure_reason,
         #     "warning message": self.warning_message,

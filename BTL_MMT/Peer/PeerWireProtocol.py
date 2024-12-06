@@ -1,4 +1,41 @@
 import hashlib
+import os
+import threading
+
+file_lock = threading.Lock()
+
+# read all files in path and return the data
+def get_data_from_path(path):
+    print("Getting data from path: ", os.getcwd())
+    data = b''
+    
+    # Single file
+    if (os.path.isfile(path)):
+        # print("Path is a file")
+        file_lock.acquire()
+        with open(path, 'rb') as f:
+            data += f.read()
+            # print('Data: ', data)
+        file_lock.release()
+        return data
+    
+    # Directory
+    for root, _, files in os.walk(path):
+        # print('Working in path: ', root)
+        for file in files:
+            # print('Reading file: ', file)
+            file_path = os.path.join(root, file)
+            
+            file_lock.acquire()
+            
+            with open(file_path, 'rb') as f:
+                current_data = f.read()
+                # print('Current data: ', current_data)
+                data += current_data
+                
+            file_lock.release()
+    # print('Data: ', data)
+    return data
 
 class Type:
     HANDSHAKE = 'handshake'
@@ -14,26 +51,25 @@ class Type:
     CANCEL = 'cancel'
     PORT = 'port'
 
-    
-def Handshake(info_hash, peer_id):      
+def handshake(info_hash, peer_id):      
     return {
         'type' : Type.HANDSHAKE,
         'info_hash': info_hash,
         'peer_id': peer_id,
     }
     
-def KeepAlive():
+def keep_alive():
     return {
         'type': Type.KEEP_ALIVE,
     }
 
-def Bitfield(bitfield):
+def bitfield(bitfield):
     return {
         'type': Type.BITFIELD,
         'bitfield': bitfield,
     }
 
-def Request(index, begin, length):
+def request(index, begin, length):
     return {
         'type': Type.REQUEST,
         'index': index,
@@ -41,23 +77,34 @@ def Request(index, begin, length):
         'length': length,        
     }
 
-def Piece(index, begin, block):
+def piece(index, begin, block):
     return {
         'type': Type.PIECE,
         'index': index,
         'begin': begin,
         'block': block
     }
-
-def GenerateBitfield(pieces, pieceCount, pieceLength, filePath):
+    
+def generate_bitfield(pieces, pieceCount, pieceLength, filePath):
+    # print('Generating bitfield...')
+    
+    # print('Current directory: ', os.getcwd())
+        
+    # print(f"Piece count: {pieceCount}")
+    # print(f"Piece length: {pieceLength}")
+    # print(f"File path: {filePath}")
+    # print(f"pieces: ", pieces)
+    
     bitfield = [0] * pieceCount
     
     try:
-        with open(filePath, 'rb') as f:
-            for i in range(pieceCount):
-                piece = f.read(pieceLength)
-                if (hashlib.sha1(piece).digest() == pieces[i]):
-                    bitfield[i] = 1
+        data = get_data_from_path(filePath)
+        for i in range(pieceCount):
+            piece = data[i * pieceLength : (i + 1) * pieceLength]
+            metainfo_piece = pieces[i * 20 : (i + 1) * 20]
+            if hashlib.sha1(piece).digest() == metainfo_piece:
+                bitfield[i] = 1
+        return bitfield
     except IOError as e:
         print(f"Error reading file {filePath}: {e}")
 

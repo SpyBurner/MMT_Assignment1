@@ -35,20 +35,20 @@ class TrackerDB():
             raise Exception("Swarm not found")
         
         if tracker_id not in self.swarm[info_hash]:
-            raise Exception("Peer not in swarm")
+            raise Exception("finish_download: Peer not in swarm")
         self.swarm[info_hash][tracker_id]['seeder'] = True
         
     def update_status(self, info_hash, tracker_id):
         if info_hash not in self.swarm:
-            raise Exception("Swarm not found")
+            raise Exception("update_status: Swarm not found")
         
         if tracker_id not in self.swarm[info_hash]:
-            raise Exception("Peer not in swarm")
+            raise Exception("update_status: Peer not in swarm")
         self.swarm[info_hash][tracker_id]['last_announce'] = time.time()
             
     def delete(self, info_hash, tracker_id):
         if tracker_id not in self.swarm[info_hash]:
-            raise Exception("Peer not in swarm")
+            raise Exception("delete: Peer not in swarm")
         del self.swarm[info_hash][tracker_id]
             
     def get_peer_list(self, info_hash):
@@ -66,9 +66,10 @@ class Tracker():
         self.db = TrackerDB()
         self.host = get_host_default_interface_ip()
         self.port = port
+        self.is_running = True
         
     def check_timeout(self):
-        while True:
+        while self.is_running:
             #? Clone self.db.swarm before altering
             dbSwarmClone = copy.deepcopy(self.db.swarm)
             
@@ -84,6 +85,10 @@ class Tracker():
                 raise Exception(f"'{field}' value is required")
         
     def handle_request(self, sock, addr):
+        if (not self.is_running):
+            return
+        
+        sock.settimeout(TRACKER_REQUEST_TIMEOUT)
         try:
             data = sock.recv(1024)
             if data:
@@ -97,8 +102,9 @@ class Tracker():
                 tracker_id = None
                 # peer wanna join the swarm
                 if event == RequestEvent.STARTED:
+                    print("Peer request STARTED")
                     tracker_id = self.db.generate_tracker_id()
-                    response.SetTrackerId(tracker_id)
+                    response.set_tracker_id(tracker_id)
                     
                     self.require_fields(request, ['peer_id', 'port', 'left'])
                     left = request["left"]
@@ -115,50 +121,69 @@ class Tracker():
                     tracker_id = request["tracker_id"]
                     # peer wanna leave the swarm
                     if event == RequestEvent.STOPPED:
+                        print("Peer request STOPPED")
                         self.db.delete(request["info_hash"], request["tracker_id"])
                     # peer completed the download
                     elif event == RequestEvent.COMPLETED:
+                        print("Peer request COMPLETED")
                         self.db.finish_download(request["info_hash"], request["tracker_id"])
                 
                 self.db.update_status(request['info_hash'], tracker_id)
-                response.SetPeers(self.db.get_peer_list(request["info_hash"]))
+                response.set_peers(self.db.get_peer_list(request["info_hash"]))
                     
         except Exception as e:
-            response.SetFailureReason(str(e))
+            response.set_failure_reason('handle_request: ' + str(e))
             raise e
         finally:
-            sock.sendall(bencode(response.Build()))
+            sock.sendall(bencode(response.build()))
             sock.close()
             print(f"[DISCONNECTED] {addr} disconnected.")
     
+    def connection_loop(self):
+        while self.is_running:
+            client_socket, addr = self.server_socket.accept()
+            print(f"[CONNECTION] Accepted connection from {addr}")
+            client_thread = threading.Thread(target=self.handle_request, args=(client_socket, addr))
+            client_thread.start()
+    
     def start(self):
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind((self.host, self.port))
-        server_socket.listen()
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.bind((self.host, self.port))
+        self.server_socket.listen()
         print(f"[LISTENING] Server is listening on {self.host}:{self.port}")
         
         # start checker thread
         checker_thread = threading.Thread(target=self.check_timeout)
         checker_thread.start()
         
-        while True:
-            client_socket, addr = server_socket.accept()
-            print(f"[CONNECTION] Accepted connection from {addr}")
-            client_thread = threading.Thread(target=self.handle_request, args=(client_socket, addr))
-            client_thread.start()
-            
-            # print(f"[ACTIVE CONNECTIONS] {threading.active_count() - 1}") # -1 because the main thread is also counted as a thread
+        # start connection loop
+        loop_thread = threading.Thread(target=self.connection_loop)
+        loop_thread.start()
         
-def Start():
+        while self.is_running:
+            exit_command = input("Type 'exit' to stop the server: ")
+            if exit_command == 'exit':
+                self.stop()
+                break
+            
+        print("[STOPPED] Server stopped.")
+    
+    def stop(self):
+        self.is_running = False    
+        # Connect to the same IP to stop the accept thread
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((self.host, self.port))
+        self.server_socket.close()
+    
+def start():
     tracker = Tracker(TRACKER_DEFAULT_PORT)
     tracker.start()
 
-def Stat(self):
+def stat(self):
     print("Tracker Stats")
         
-def List(self):
+def list(self):
     print("List Files in Tracker")
-    
     
 def get_host_default_interface_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
