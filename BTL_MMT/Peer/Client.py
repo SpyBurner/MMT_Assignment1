@@ -51,7 +51,7 @@ class ClientUploader(threading.Thread):
 
         metainfo.set_piece_length(global_setting.PIECE_SIZE)
         
-        print('basename', os.path.basename(self.filePath))
+        # print('basename', os.path.basename(self.filePath))
         metainfo.set_name(os.path.basename(self.filePath))
         piece_count = 0
 
@@ -83,7 +83,7 @@ class ClientUploader(threading.Thread):
         except OSError as e:
             print(f"Error creating metainfo directory: {e}")
 
-        print(f"Metainfo: {metainfo.build()}")
+        # print(f"Metainfo: {metainfo.build()}")
 
         # Build into dictionary
         metainfo = metainfo.build()
@@ -106,7 +106,7 @@ class ClientUploader(threading.Thread):
                 shutil.copytree(self.filePath, repo_path)
         except OSError as e:
             print(f"Error copying file to repo: {e}")
-            # raise(e)
+            raise(e)
             
         #? Send request to all trackers
         for announce in self.announce_list:
@@ -154,43 +154,39 @@ class ClientPieceRequester(threading.Thread):
         #? Request a piece and write to file on sucess
         print(f"Requesting piece {self.index} from peer " + self.sock.getpeername()[0])
         self.sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
-        # try:
-        self.sock.sendall(bcoding.bencode(pwp.request(self.index, self.begin, self.length)))
-        
-        print('Request sent')
-        
-        print('Waiting for response...')
-        response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
-        print('Response received')
-        
-        response = bcoding.bdecode(response)
-        
-        if (response['type'] != pwp.Type.PIECE):
-            print("Peer did not respond with correct piece.")
-            return
-        block = b'';
-
-        if (type(response['block']) == str):
-            block = bytes(response['block'], 'utf-8')
-        elif (type(response['block']) == bytes):
-            block = response['block']
-        else:
-            raise Exception("Invalid block type")
-        # print("Received block: ", block, " type: ", type(block))
-        
-        # data = block.encode('utf-8')
-        # print("Data: ", data, " type: ", type(data))
-
-        file_lock.acquire()
-        
-        with open(self.filePath, 'r+b') as f:
-            f.seek(self.index * global_setting.PIECE_SIZE + self.begin)
-            f.write(block)
+        try:
+            self.sock.sendall(bcoding.bencode(pwp.request(self.index, self.begin, self.length)))
             
-        file_lock.release()
+            print('Request sent')
             
-        # except Exception as e:
-        #     print(f"Error in ClientPieceRequester: {e}")
+            print('Waiting for response...')
+            response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+            print('Response received')
+            
+            response = bcoding.bdecode(response)
+            
+            if (response['type'] != pwp.Type.PIECE):
+                print("Peer did not respond with correct piece.")
+                return
+            block = b'';
+
+            if (type(response['block']) == str):
+                block = bytes(response['block'], 'utf-8')
+            elif (type(response['block']) == bytes):
+                block = response['block']
+            else:
+                raise Exception("Invalid block type")
+
+            file_lock.acquire()
+            
+            with open(self.filePath, 'r+b') as f:
+                f.seek(self.index * global_setting.PIECE_SIZE + self.begin)
+                f.write(block)
+                
+            file_lock.release()
+            
+        except Exception as e:
+            print(f"Error in ClientPieceRequester: {e}")
 class ClientDownloader(threading.Thread):
     def __init__(self, metainfoPath):
         threading.Thread.__init__(self)
@@ -324,10 +320,6 @@ class ClientDownloader(threading.Thread):
             
             peerList = Server.get_server().peerMapping[info_hash]
             
-            #? Print list of peers
-            print("[Acquired peer list] ")
-            print(peerList)
-            
             #? Connect to peers for handshake and bitfield exchange            
             # Format: (socket, bitfield)
             peerConnections = []
@@ -392,9 +384,6 @@ class ClientDownloader(threading.Thread):
                 continue
 
             requestedBitfield = copy.deepcopy(this_bitfield['bitfield'])
-            
-            print('peerList: ', peerList)
-            print('Update bitfield: ', requestedBitfield)
             
             #? Choose which piece to download from which peer
             #? Spread the load evenly

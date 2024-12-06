@@ -16,16 +16,16 @@ def get_data_from_path(path):
     
     # Directory
     for root, _, files in os.walk(path):
-        print('Working in path: ', root)
+        # print('Working in path: ', root)
         for file in files:
-            print('Reading file: ', file)
+            # print('Reading file: ', file)
             file_path = os.path.join(root, file)
             with open(file_path, 'rb') as f:
                 current_data = f.read()
-                print('Current data: ', current_data)
+                # print('Current data: ', current_data)
                 data += current_data
                 
-    print('Data: ', data)
+    # print('Data: ', data)
     return data
 
 class Type:
@@ -78,13 +78,13 @@ def piece(index, begin, block):
     }
 
 def generate_bitfield(pieces, pieceCount, pieceLength, filePath):
-    print('Generating bitfield...')
+    # print('Generating bitfield...')
     
-    print('Current directory: ', os.getcwd())
+    # print('Current directory: ', os.getcwd())
         
-    print(f"Piece count: {pieceCount}")
-    print(f"Piece length: {pieceLength}")
-    print(f"File path: {filePath}")
+    # print(f"Piece count: {pieceCount}")
+    # print(f"Piece length: {pieceLength}")
+    # print(f"File path: {filePath}")
     # print(f"pieces: ", pieces)
     
     bitfield = [0] * pieceCount
@@ -94,11 +94,8 @@ def generate_bitfield(pieces, pieceCount, pieceLength, filePath):
         for i in range(pieceCount):
             piece = data[i * pieceLength : (i + 1) * pieceLength]
             metainfo_piece = pieces[i * 20 : (i + 1) * 20]
-            # print(f"Piece {i} hash: {hashlib.sha1(piece).digest()}")
-            # print(f"Metainfo piece {i} hash: {metainfo_piece}")
             if hashlib.sha1(piece).digest() == metainfo_piece:
                 bitfield[i] = 1
-            print('Bit: ', bitfield[i])
         return bitfield
     except IOError as e:
         print(f"Error reading file {filePath}: {e}")

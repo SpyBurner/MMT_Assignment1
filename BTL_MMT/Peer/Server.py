@@ -230,12 +230,6 @@ class ServerUploader(threading.Thread):
                     
                     pieceCount = math.ceil(totalLength / pieceLength)
                     
-                    print('File details: ' + str(pieceLength) + ", " + str(totalLength) + ", " + str(pieceCount))
-                    
-                    print("Piece count: " + str(pieceCount))
-                    
-                    print("Files in repo: " + str(os.listdir(peer_setting.REPO_FILE_PATH)))
-                    
                     file = os.path.join('./',peer_setting.REPO_FILE_PATH, info_hash)
                     
                     if not os.path.exists(file):
