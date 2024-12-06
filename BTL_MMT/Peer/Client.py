@@ -154,37 +154,43 @@ class ClientPieceRequester(threading.Thread):
         #? Request a piece and write to file on sucess
         print(f"Requesting piece {self.index} from peer " + self.sock.getpeername()[0])
         self.sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
-        try:
-            self.sock.sendall(bcoding.bencode(pwp.request(self.index, self.begin, self.length)))
-            
-            print('Request sent')
-            
-            print('Waiting for response...')
-            response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
-            print('Response received')
-            
-            response = bcoding.bdecode(response)
-            
-            if (response['type'] != pwp.Type.PIECE):
-                print("Peer did not respond with correct piece.")
-                return
+        # try:
+        self.sock.sendall(bcoding.bencode(pwp.request(self.index, self.begin, self.length)))
+        
+        print('Request sent')
+        
+        print('Waiting for response...')
+        response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+        print('Response received')
+        
+        response = bcoding.bdecode(response)
+        
+        if (response['type'] != pwp.Type.PIECE):
+            print("Peer did not respond with correct piece.")
+            return
+        block = b'';
 
+        if (type(response['block']) == str):
+            block = bytes(response['block'], 'utf-8')
+        elif (type(response['block']) == bytes):
             block = response['block']
-            print("Received block: ", block, " type: ", type(block))
-            
-            data = block.encode('utf-8')
-            print("Data: ", data, " type: ", type(data))
+        else:
+            raise Exception("Invalid block type")
+        # print("Received block: ", block, " type: ", type(block))
+        
+        # data = block.encode('utf-8')
+        # print("Data: ", data, " type: ", type(data))
 
-            file_lock.acquire()
+        file_lock.acquire()
+        
+        with open(self.filePath, 'r+b') as f:
+            f.seek(self.index * global_setting.PIECE_SIZE + self.begin)
+            f.write(block)
             
-            with open(self.filePath, 'r+b') as f:
-                f.seek(self.index * global_setting.PIECE_SIZE + self.begin)
-                f.write(data)
-                
-            file_lock.release()
+        file_lock.release()
             
-        except Exception as e:
-            print(f"Error in ClientPieceRequester: {e}")
+        # except Exception as e:
+        #     print(f"Error in ClientPieceRequester: {e}")
 class ClientDownloader(threading.Thread):
     def __init__(self, metainfoPath):
         threading.Thread.__init__(self)

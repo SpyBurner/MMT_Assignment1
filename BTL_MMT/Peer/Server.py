@@ -274,11 +274,11 @@ class ServerUploader(threading.Thread):
                     # read only once
                     if (not is_file_read):
                         is_file_read = True
-                        file_read += pwp.get_data_from_path(file)
+                        file_read += bytes(pwp.get_data_from_path(file))
                     
-                    block = file_read[index * pieceLength + begin : index * pieceLength + begin + length]
+                    block = bytes(file_read[index * pieceLength + begin : index * pieceLength + begin + length])
                                         
-                    response = pwp.piece(index, begin, block.decode("utf-8"))
+                    response = pwp.piece(index, begin, block)
                     
                     print('Piece response')
                     
