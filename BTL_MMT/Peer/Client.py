@@ -1,3 +1,4 @@
+import copy
 import threading
 import os
 import sys
@@ -18,18 +19,8 @@ import PeerWireProtocol as pwp
 import time
 
 file_lock = threading.Lock()
-
-# read all files in path and return the data
-def get_data_from_path(path):
-    data = b''
-    for root, _, files in os.walk(path):
-        for file in files:
-            file_path = os.path.join(root, file)
-            with open(file_path, 'rb') as f:
-                data += f.read()
-    return data
     
-
+    
 class ClientUploader(threading.Thread):
     def __init__(self, filePath, announce_list):
         threading.Thread.__init__(self)
@@ -39,7 +30,7 @@ class ClientUploader(threading.Thread):
         
     def get_piece_hashes(self, piece_count):
         piece_hashes = []
-        data = get_data_from_path(self.filePath)
+        data = pwp.get_data_from_path(self.filePath)
         for i in range(piece_count):
             start = i * global_setting.PIECE_SIZE
             end = min(start + global_setting.PIECE_SIZE, len(data))
@@ -59,7 +50,7 @@ class ClientUploader(threading.Thread):
             })
 
         metainfo.set_piece_length(global_setting.PIECE_SIZE)
-        # both file name and directory name
+        
         print('basename', os.path.basename(self.filePath))
         metainfo.set_name(os.path.basename(self.filePath))
         piece_count = 0
@@ -123,7 +114,7 @@ class ClientUploader(threading.Thread):
             request.set_info_hash(infohash)
             request.set_port(Server.get_server().port)
             request.set_event("started")
-            request.set_uploader(0)
+            request.set_uploaded(0)
             request.set_downloaded(0)
             request.set_left(0)
             request.set_peer_id(Server.get_server().peerID)
@@ -161,13 +152,20 @@ class ClientPieceRequester(threading.Thread):
     
     def run(self):
         #? Request a piece and write to file on sucess
-        print(f"Requesting piece {self.index} from peer" + self.sock.getpeername()[0])
-        
+        print(f"Requesting piece {self.index} from peer " + self.sock.getpeername()[0])
+        self.sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
         try:
             self.sock.sendall(bcoding.bencode(pwp.request(self.index, self.begin, self.length)))
             
+            print('Request sent')
+            
+            print('Waitint for response...')
             response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+            print('Response received')
+            
             response = bcoding.bdecode(response)
+            
+            print('Response: ', response)
             
             if (response['type'] != pwp.Type.PIECE):
                 print("Peer did not respond with correct piece.")
@@ -177,7 +175,7 @@ class ClientPieceRequester(threading.Thread):
             
             with open(self.filePath, 'r+b') as f:
                 f.seek(self.index * global_setting.PIECE_SIZE + self.begin)
-                f.write(response['block'])
+                f.write(response['block'].encode())
                 
             file_lock.release()
             
@@ -201,7 +199,7 @@ class ClientDownloader(threading.Thread):
         #? Create metainfo directory if it does not exist
         try:
             os.makedirs(peer_setting.METAINFO_FILE_PATH, exist_ok=True)
-            print("Metainfo directory created.")
+            print("Metainfo directory ensured.")
         except Exception as e:
             print("Error creating metainfo directory: ", e)
         
@@ -209,6 +207,7 @@ class ClientDownloader(threading.Thread):
         #TODO Rename metainfo file to info_hash
         try:
             shutil.copy(self.metainfoPath, peer_setting.METAINFO_FILE_PATH)
+            print("Metainfo file copied.")
         except Exception as e:
             print("Metainfo file copy error: ", e)
         
@@ -218,18 +217,21 @@ class ClientDownloader(threading.Thread):
         request.set_info_hash(info_hash)
         request.set_port(server.port)
         request.set_event("started")
-        request.set_uploader(0)
+        request.set_uploaded(0)
         request.set_downloaded(0)
         request.set_left(0)
         request.set_peer_id(server.peerID)
         
         requesters = []
         
+        print('Sending started requests...')
+        
         #? Send request to all trackers to get peer list
         for announce in metainfo['announce_list']:
             requester = Server.ServerRequester(server, announce['ip'], announce['port'], request)  
             requesters.append(requester)
             requester.start()
+            print('Started request sent to tracker: ', announce)
         
         #? Wait for all threads to terminate before continueing
         for requester in requesters:
@@ -259,17 +261,24 @@ class ClientDownloader(threading.Thread):
         #? Create file in repo with filler bytes
         tempFilePath = os.path.join(peer_setting.REPO_FILE_PATH, info_hash, info_hash + peer_setting.TEMP_DOWNLOAD_FILE_EXTENSION)
         try: 
-            with open(tempFilePath, 'wb') as f:
-                f.write(b'\0' * totalLength)
+            if (not os.path.exists(tempFilePath)):
+                with open(tempFilePath, 'wb') as f:
+                    f.write(b'\0' * totalLength)
+            else: 
+                print("File already exist in repo.")
         except Exception as e:
             print("Error creating file in repo: ", e)
+        
+        print('Temp file created')
         
         pieces = metainfo['info']['pieces']
         
         print('Metainfo extracts: ', pieceLength, totalLength, pieceCount, pieces)
         
         tryCount = 0;
-        tryLimit = 3;
+        tryLimit = 5;
+        
+        print('Starting download...')
         
         while True:
             tryCount += 1
@@ -283,12 +292,12 @@ class ClientDownloader(threading.Thread):
                     requester.start()
                 return
             
-            bitfield = pwp.bitfield(pwp.generate_bitfield(pieces, pieceCount, pieceLength, tempFilePath))
+            this_bitfield = pwp.bitfield(pwp.generate_bitfield(pieces, pieceCount, pieceLength, tempFilePath))
             
-            print("Current number of pieces downloaded: ", sum(bitfield['bitfield']))
+            print("Current number of pieces downloaded: ", sum(this_bitfield['bitfield']))
             
             #? Break when all pieces are downloaded
-            if (sum(bitfield['bitfield']) == pieceCount):
+            if (sum(this_bitfield['bitfield']) == pieceCount):
                 break
             
             peerList = Server.get_server().peerMapping[info_hash]
@@ -334,12 +343,13 @@ class ClientDownloader(threading.Thread):
                     continue
 
                 #? Create keep alive thread
-                keepAlive = ClientKeepAlive(sock, peer_setting.KEEP_ALIVE_INTERVAL)
-                keepAlive.start()
-                keepAliveThreads.append(keepAlive)
+                # keepAlive = ClientKeepAlive(sock, peer_setting.KEEP_ALIVE_INTERVAL)
+                # keepAlive.start()
+                # keepAliveThreads.append(keepAlive)
 
                 #? ALWAYS send bitfield
-                sock.sendall(bcoding.bencode(bitfield))
+                request = pwp.bitfield(this_bitfield['bitfield'])
+                sock.sendall(bcoding.bencode(request))
                 
                 #? Receive bitfield
                 response = sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
@@ -350,7 +360,7 @@ class ClientDownloader(threading.Thread):
                     sock.close()
                     continue
                 
-                print("[Bitfield] received from peer: ", peer['ip'])
+                print("[Bitfield] received from peer: ", peer['ip'], " bitfield: ", response['bitfield'])
                 
                 peerConnections.append((sock, response['bitfield']))
 
@@ -359,7 +369,10 @@ class ClientDownloader(threading.Thread):
                 print("[Download attempt", tryCount," ] No peers connected.")
                 continue
 
-            updateBitfield = bitfield.copy()
+            requestedBitfield = copy.deepcopy(this_bitfield['bitfield'])
+            
+            print('peerList: ', peerList)
+            print('Update bitfield: ', requestedBitfield)
             
             #? Choose which piece to download from which peer
             #? Spread the load evenly
@@ -370,15 +383,16 @@ class ClientDownloader(threading.Thread):
                 pieceRequested = 0
                 #? Check if piece is already downloaded
                 for i in range(pieceCount):
-                    if (updateBitfield[i] == 0 and connection[1][i] == 1):
+                    if (requestedBitfield[i] == 0 and connection[1][i] == 1):
                         requester = ClientPieceRequester(connection[0], i, 0, pieceLength, tempFilePath)
-                        updateBitfield[i] = 1
+                        requestedBitfield[i] = 1
                         requester.start()
                         pieceRequested += 1
                         pieceRequesterThreads.append(requester)
                         
                     if (pieceRequested >= piecePerPeer):
                         break
+            
             
             #? Wait for all threads to terminate before continueing
             for thread in pieceRequesterThreads:

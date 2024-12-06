@@ -35,20 +35,20 @@ class TrackerDB():
             raise Exception("Swarm not found")
         
         if tracker_id not in self.swarm[info_hash]:
-            raise Exception("Peer not in swarm")
+            raise Exception("finish_download: Peer not in swarm")
         self.swarm[info_hash][tracker_id]['seeder'] = True
         
     def update_status(self, info_hash, tracker_id):
         if info_hash not in self.swarm:
-            raise Exception("Swarm not found")
+            raise Exception("update_status: Swarm not found")
         
         if tracker_id not in self.swarm[info_hash]:
-            raise Exception("Peer not in swarm")
+            raise Exception("update_status: Peer not in swarm")
         self.swarm[info_hash][tracker_id]['last_announce'] = time.time()
             
     def delete(self, info_hash, tracker_id):
         if tracker_id not in self.swarm[info_hash]:
-            raise Exception("Peer not in swarm")
+            raise Exception("delete: Peer not in swarm")
         del self.swarm[info_hash][tracker_id]
             
     def get_peer_list(self, info_hash):
@@ -98,7 +98,7 @@ class Tracker():
                 # peer wanna join the swarm
                 if event == RequestEvent.STARTED:
                     tracker_id = self.db.generate_tracker_id()
-                    response.SetTrackerId(tracker_id)
+                    response.set_tracker_id(tracker_id)
                     
                     self.require_fields(request, ['peer_id', 'port', 'left'])
                     left = request["left"]
@@ -121,13 +121,13 @@ class Tracker():
                         self.db.finish_download(request["info_hash"], request["tracker_id"])
                 
                 self.db.update_status(request['info_hash'], tracker_id)
-                response.SetPeers(self.db.get_peer_list(request["info_hash"]))
+                response.set_peers(self.db.get_peer_list(request["info_hash"]))
                     
         except Exception as e:
-            response.SetFailureReason(str(e))
+            response.set_failure_reason('handle_request: ' + str(e))
             raise e
         finally:
-            sock.sendall(bencode(response.Build()))
+            sock.sendall(bencode(response.build()))
             sock.close()
             print(f"[DISCONNECTED] {addr} disconnected.")
     

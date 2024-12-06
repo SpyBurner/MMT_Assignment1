@@ -54,7 +54,7 @@ class ServerRequester(threading.Thread):
         if (self.server.unique_map_key(self.trackerIP, self.trackerPort) in self.server.trackerIDMapping):
             self.request.set_tracker_id(self.server.trackerIDMapping[self.server.unique_map_key(self.trackerIP, self.trackerPort)])
                 
-        builtRequest = self.request.Build()
+        builtRequest = self.request.build()
         
         # print(builtRequest)
                 
@@ -112,7 +112,7 @@ class ServerRegularAnnouncer(threading.Thread):
                 startRequest.set_info_hash(info_hash)
                 startRequest.set_port(self.peer_port)
                 
-                startRequest.set_uploader(0)
+                startRequest.set_uploaded(0)
                 
                 #TODO Change after local file mapping implementation
                 startRequest.set_downloaded(0)
@@ -155,7 +155,7 @@ class ServerRegularAnnouncer(threading.Thread):
                 regularRequest.set_port(self.peer_port)
                 
                 #TODO Change after local file mapping implementation
-                regularRequest.set_uploader(0)
+                regularRequest.set_uploaded(0)
                 regularRequest.set_downloaded(0)
                 regularRequest.set_left(0)
                 
@@ -185,8 +185,10 @@ class ServerUploader(threading.Thread):
         info_hash = ""   
         file  = ""
         metainfo = None
+        pieces = None
         try:
             while True:
+                print("Waiting for data from peer: " + self.addr[0] + ":" + str(self.addr[1]))
                 data = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
                 if not data:
                     break
@@ -196,20 +198,28 @@ class ServerUploader(threading.Thread):
                 
                 if (request['type'] == pwp.Type.HANDSHAKE):
                     #? Received handshake, set info_hash and check local file
+                    
+                    print('Received handshake from: ' + self.addr[0] + ":" + str(self.addr[1]))
+                    print('Info hash: ' + request['info_hash'])
+                    
                     info_hash = request['info_hash']
                     try: 
                         metainfo = mib.Get(os.path.join(peer_setting.METAINFO_FILE_PATH, info_hash + global_setting.METAINFO_FILE_EXTENSION))
+                        print("Metainfo found for info_hash: " + info_hash)
                     except FileNotFoundError:
                         print("Metainfo not found for info_hash: " + info_hash)
                         self.sock.close()
                         return
                     
+                    print("Found metainfo: ", metainfo)
+                    
                     pieceLength = metainfo['info']['piece length']
+                    pieces = metainfo['info']['pieces']
                     totalLength = 0
                     
                     #? Get totalLength in either file mode
-                    isSingleFile = True
                     if (len(metainfo['info']['files']) == 0):
+                        isSingleFile = True
                         totalLength = metainfo['info']['length']
                     else:
                         isSingleFile = False
@@ -218,23 +228,37 @@ class ServerUploader(threading.Thread):
                     
                     pieceCount = math.ceil(totalLength / pieceLength)
                     
-                    file = os.path.join(peer_setting.REPO_FILE_PATH, info_hash)
+                    print('File details: ' + str(pieceLength) + ", " + str(totalLength) + ", " + str(pieceCount))
                     
-                    if os.path.exists(file):
+                    print("Piece count: " + str(pieceCount))
+                    
+                    print("Files in repo: " + str(os.listdir(peer_setting.REPO_FILE_PATH)))
+                    
+                    file = os.path.join('./',peer_setting.REPO_FILE_PATH, info_hash)
+                    
+                    if not os.path.exists(file):
                         response = pwp.handshake('huh?', self.server.peerID)
+                        print("File not found for info_hash: " + file)
                     else:
                         response = pwp.handshake(request['info_hash'], self.server.peerID)
+                        print("File found for info_hash: " + file + ", handshake sent.")
                         
                     self.sock.sendall(bcoding.bencode(response))
                 elif (request['type'] == pwp.Type.BITFIELD):
+                    print('Received bitfield: ', request)
+                    
                     #? Respond with bitfield
                     if (file == ""):
                         response = pwp.handshake('huh?', self.server.peerID)
                     else:
-                        response = pwp.bitfield(pwp.generate_bitfield(metainfo['info']['pieceCount'], metainfo['info']['pieceLength'], file))
+                        response = pwp.bitfield(pwp.generate_bitfield(filePath=file, pieceCount=pieceCount, pieceLength=pieceLength, pieces=pieces))
+                    
+                    print("Bitfield response: ", response)
                     
                     self.sock.sendall(bcoding.bencode(response))
                 elif (request['type'] == pwp.Type.REQUEST):
+                    print('Received request: ', request)
+                    
                     #? Respond with piece
                     if (file == ""):
                         response = pwp.handshake('huh?', self.server.peerID)
@@ -246,10 +270,13 @@ class ServerUploader(threading.Thread):
                     length = request['length']
                     
                     with open(file, 'rb') as f:
-                        f.seek(index * peer_setting.PIECE_SIZE + begin)
+                        f.seek(index * global_setting.PIECE_SIZE + begin)
                         block = f.read(length)
                     
                     response = pwp.piece(index, begin, block)
+                    
+                    print('Piece response: ', response)
+                    
                     self.sock.sendall(bcoding.bencode(response))
                 
                 elif (request['type'] == pwp.Type.KEEP_ALIVE):
@@ -325,12 +352,12 @@ class Server():
 
         # Upload task
         upload_parser = subparsers.add_parser('upload', help='Upload a file')
-        upload_parser.add_argument('--filePath', type=str, required=True, help='Path to the file to upload')
-        upload_parser.add_argument('--tracker', type=str, action='append', nargs=2, metavar=('IP', 'PORT'), required=True, help='Tracker IP and port')
+        upload_parser.add_argument('--filePath', '-f', type=str, required=True, help='Path to the file to upload')
+        upload_parser.add_argument('--tracker', '-t', type=str, action='append', nargs=2, metavar=('IP', 'PORT'), required=True, help='Tracker IP and port')
 
         # Download task
         download_parser = subparsers.add_parser('download', help='Download a file')
-        download_parser.add_argument('--metainfo', type=str, required=True, help='Path to the metainfo file')
+        download_parser.add_argument('--metainfo', '-m', type=str, required=True, help='Path to the metainfo file')
 
         parser.print_usage();
         while self.isRunning:

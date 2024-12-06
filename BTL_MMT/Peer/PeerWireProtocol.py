@@ -1,4 +1,29 @@
 import hashlib
+import os
+
+# read all files in path and return the data
+def get_data_from_path(path):
+    print("Getting data from path: ", os.getcwd())
+    data = b''
+    
+    # Single file
+    if (os.path.isfile(path)):
+        # print("Path is a file")
+        with open(path, 'rb') as f:
+            data = f.read()
+            # print('Data: ', data)
+        return data
+    
+    # Directory
+    for root, _, files in os.walk(path):
+        # print('Working in path: ', root)
+        for file in files:
+            # print('Reading file: ', file)
+            file_path = os.path.join(root, file)
+            with open(file_path, 'rb') as f:
+                data += str(f.read())
+                # print('Data: ', f.read())
+    return data
 
 class Type:
     HANDSHAKE = 'handshake'
@@ -50,14 +75,28 @@ def piece(index, begin, block):
     }
 
 def generate_bitfield(pieces, pieceCount, pieceLength, filePath):
+    print('Generating bitfield...')
+    
+    print('Current directory: ', os.getcwd())
+        
+    print(f"Piece count: {pieceCount}")
+    print(f"Piece length: {pieceLength}")
+    print(f"File path: {filePath}")
+    print(f"pieces: ", pieces)
+    
     bitfield = [0] * pieceCount
     
     try:
-        with open(filePath, 'rb') as f:
-            for i in range(pieceCount):
-                piece = f.read(pieceLength)
-                if (hashlib.sha1(piece).digest() == pieces[i]):
-                    bitfield[i] = 1
+        data = get_data_from_path(filePath)
+        for i in range(pieceCount):
+            piece = data[i * pieceLength : (i + 1) * pieceLength]
+            metainfo_piece = pieces[i * pieceLength : (i + 1) * pieceLength]
+            print(f"Piece {i} hash: {hashlib.sha1(piece).digest()}")
+            print(f"Metainfo piece {i} hash: {metainfo_piece}")
+            if hashlib.sha1(piece).digest() == metainfo_piece:
+                bitfield[i] = 1
+            print('Bit: ', bitfield[i])
+        return bitfield
     except IOError as e:
         print(f"Error reading file {filePath}: {e}")
 
