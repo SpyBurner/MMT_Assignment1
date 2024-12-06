@@ -175,7 +175,7 @@ class ClientPieceRequester(threading.Thread):
             
             with open(self.filePath, 'r+b') as f:
                 f.seek(self.index * global_setting.PIECE_SIZE + self.begin)
-                f.write(response['block'].encode())
+                f.write(response['block'])
                 
             file_lock.release()
             
@@ -259,7 +259,7 @@ class ClientDownloader(threading.Thread):
         pieceCount = math.ceil(totalLength / pieceLength)
         
         #? Create file in repo with filler bytes
-        tempFilePath = os.path.join(peer_setting.REPO_FILE_PATH, info_hash, info_hash + peer_setting.TEMP_DOWNLOAD_FILE_EXTENSION)
+        tempFilePath = os.path.join(peer_setting.REPO_FILE_PATH, info_hash, info_hash)
         try: 
             if (not os.path.exists(tempFilePath)):
                 with open(tempFilePath, 'wb') as f:
@@ -285,9 +285,11 @@ class ClientDownloader(threading.Thread):
             if (tryCount > tryLimit):
                 print("Download failed after ", tryLimit, " attempts.")
                 #? Leave swarm
-                request.set_event("stopped")
+                stop_request = tp.TrackerRequestBuilder()
+                stop_request.set_info_hash(info_hash)
+                stop_request.set_event(tp.RequestEvent.STOPPED)
                 for announce in metainfo['announce_list']:
-                    requester = Server.ServerRequester(server, announce['ip'], announce['port'], request)  
+                    requester = Server.ServerRequester(server, announce['ip'], announce['port'], stop_request)  
                     requesters.append(requester)
                     requester.start()
                 return
@@ -404,25 +406,25 @@ class ClientDownloader(threading.Thread):
         
         #TODO Multiple file case where
         #? Map temp file to the actual file(s)
-        if isSingleFile:
-            try:
-                os.rename(tempFilePath, os.path.join(peer_setting.REPO_FILE_PATH, info_hash, metainfo['info']['name']))
-            except Exception as e:
-                print("Error renaming file: ", e)
+        # if isSingleFile:
+        #     try:
+        #         os.rename(tempFilePath, os.path.join(peer_setting.REPO_FILE_PATH, info_hash, metainfo['info']['name']))
+        #     except Exception as e:
+        #         print("Error renaming file: ", e)
             
-        else:
-            try:
-                with open(tempFilePath, 'rb') as tempFile:
-                    for file in metainfo['info']['files']:
-                        filePath = os.path.join(peer_setting.REPO_FILE_PATH, info_hash, *file['path'])
-                        fileLength = file['length']
+        # else:
+        #     try:
+        #         with open(tempFilePath, 'rb') as tempFile:
+        #             for file in metainfo['info']['files']:
+        #                 filePath = os.path.join(peer_setting.REPO_FILE_PATH, info_hash, *file['path'])
+        #                 fileLength = file['length']
                         
-                        os.makedirs(os.path.dirname(filePath), exist_ok=True)
+        #                 os.makedirs(os.path.dirname(filePath), exist_ok=True)
                         
-                        with open(filePath, 'wb') as f:
-                            f.write(tempFile.read(fileLength))
-            except Exception as e:
-                print("Error in file mapping ", e)
+        #                 with open(filePath, 'wb') as f:
+        #                     f.write(tempFile.read(fileLength))
+        #     except Exception as e:
+        #         print("Error in file mapping ", e)
         
         print("Download for file(s) ", metainfo['info']['name'], " with info_hash ", info_hash, " completed.")        
             

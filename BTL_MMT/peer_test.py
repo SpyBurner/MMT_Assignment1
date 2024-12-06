@@ -11,12 +11,13 @@ if os.path.exists(destination_dir):
     shutil.rmtree(destination_dir)
 shutil.copytree(source_dir, destination_dir)
 
+os.chdir(destination_dir)
+
 try: 
     # Run the Server
-    os.chdir(destination_dir)
     os.system('python main.py')
 except (Exception , KeyboardInterrupt) as e:
     print('Error: ', e)
-    os.chdir('..')
 
+os.chdir('..')
 shutil.rmtree(destination_dir)

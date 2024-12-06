@@ -275,7 +275,7 @@ class ServerUploader(threading.Thread):
                     
                     response = pwp.piece(index, begin, block)
                     
-                    print('Piece response: ', response)
+                    print('Piece response')
                     
                     self.sock.sendall(bcoding.bencode(response))
                 
