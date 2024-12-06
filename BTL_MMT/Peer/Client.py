@@ -169,11 +169,17 @@ class ClientPieceRequester(threading.Thread):
                 print("Peer did not respond with correct piece.")
                 return
 
+            block = response['block']
+            print("Received block: ", block, " type: ", type(block))
+            
+            data = block.encode('utf-8')
+            print("Data: ", data, " type: ", type(data))
+
             file_lock.acquire()
             
             with open(self.filePath, 'r+b') as f:
                 f.seek(self.index * global_setting.PIECE_SIZE + self.begin)
-                f.write(response['block'])
+                f.write(data)
                 
             file_lock.release()
             
@@ -290,7 +296,7 @@ class ClientDownloader(threading.Thread):
                     requester = Server.ServerRequester(server, announce['ip'], announce['port'], stop_request)  
                     requesters.append(requester)
                     requester.start()
-                                    #? Delete temp file
+                #? Delete temp file
                 try:
                     os.remove(tempFilePath)
                 except Exception as e:

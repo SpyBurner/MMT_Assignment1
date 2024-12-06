@@ -10,19 +10,22 @@ def get_data_from_path(path):
     if (os.path.isfile(path)):
         # print("Path is a file")
         with open(path, 'rb') as f:
-            data = f.read()
+            data += f.read()
             # print('Data: ', data)
         return data
     
     # Directory
     for root, _, files in os.walk(path):
-        # print('Working in path: ', root)
+        print('Working in path: ', root)
         for file in files:
-            # print('Reading file: ', file)
+            print('Reading file: ', file)
             file_path = os.path.join(root, file)
             with open(file_path, 'rb') as f:
-                data += f.read()
-                # print('Data: ', f.read())
+                current_data = f.read()
+                print('Current data: ', current_data)
+                data += current_data
+                
+    print('Data: ', data)
     return data
 
 class Type:

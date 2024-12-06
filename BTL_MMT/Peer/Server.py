@@ -186,6 +186,8 @@ class ServerUploader(threading.Thread):
         file  = ""
         metainfo = None
         pieces = None
+        file_read = b''
+        is_file_read = False
         try:
             while True:
                 print("Waiting for data from peer: " + self.addr[0] + ":" + str(self.addr[1]))
@@ -269,11 +271,14 @@ class ServerUploader(threading.Thread):
                     begin = request['begin']
                     length = request['length']
                     
-                    with open(file, 'rb') as f:
-                        f.seek(index * global_setting.PIECE_SIZE + begin)
-                        block = f.read(length)
+                    # read only once
+                    if (not is_file_read):
+                        is_file_read = True
+                        file_read += pwp.get_data_from_path(file)
                     
-                    response = pwp.piece(index, begin, block)
+                    block = file_read[index * pieceLength + begin : index * pieceLength + begin + length]
+                                        
+                    response = pwp.piece(index, begin, block.decode("utf-8"))
                     
                     print('Piece response')
                     
