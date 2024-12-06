@@ -196,14 +196,13 @@ class ClientDownloader(threading.Thread):
         self.metainfoPath = metainfoPath
 
     def run(self):        
-        #TODO Get info_hash from metainfo
         metainfo = mi.Get(self.metainfoPath)
         
         info_hash = hashlib.sha1(bcoding.bencode(metainfo['info'])).hexdigest()
         
         print("[Downloading] name: ", metainfo['info']['name'], " and info_hash: ", info_hash)
         
-        print("[Metainfo] ", metainfo)
+        # print("[Metainfo] ", metainfo)
         
         #? Create metainfo directory if it does not exist
         try:
@@ -360,9 +359,9 @@ class ClientDownloader(threading.Thread):
                     continue
 
                 #? Create keep alive thread
-                keepAlive = ClientKeepAlive(sock, peer_setting.KEEP_ALIVE_INTERVAL)
-                keepAlive.start()
-                keepAliveThreads.append(keepAlive)
+                # keepAlive = ClientKeepAlive(sock, peer_setting.KEEP_ALIVE_INTERVAL)
+                # keepAlive.start()
+                # keepAliveThreads.append(keepAlive)
 
                 #? ALWAYS send bitfield
                 request = pwp.bitfield(this_bitfield['bitfield'])
