@@ -159,7 +159,11 @@ class ServerRegularAnnouncer(threading.Thread):
                 regularRequest.set_downloaded(0)
                 regularRequest.set_left(0)
                 
-                regularRequest.set_event(None)
+                if (get_server().isRunning):
+                    regularRequest.set_event(None)
+                else:
+                    # Stop when main thread stops
+                    regularRequest.set_event('stopped')
                 
                 for announce in metainfo['announce_list']:
                     trackerIP = announce['ip']
@@ -170,6 +174,12 @@ class ServerRegularAnnouncer(threading.Thread):
                     
                     requester = ServerRequester(self.server, trackerIP, trackerPort, regularRequest)
                     requester.start()
+                
+                if not get_server().isRunning:
+                    break
+                
+                # Sleep for the interval
+                time.sleep(self.interval)
         
 class ServerUploader(threading.Thread):
     def __init__(self, server, sock, addr, timeout=peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT):
@@ -327,8 +337,8 @@ class Server():
         self.peerID = str(self.ip) + ":" + str(self.port) + time.strftime("%Y%m%d%H%M%S")
         
         # Start regular announcer
-        regularAnnouncer = ServerRegularAnnouncer(self, self.peerID, self.ip, self.port, peer_setting.ANNOUNCE_INTERVAL)
-        regularAnnouncer.start()
+        self.regularAnnouncer = ServerRegularAnnouncer(self, self.peerID, self.ip, self.port, peer_setting.ANNOUNCE_INTERVAL)
+        self.regularAnnouncer.start()
         
         #? Store tracker_id for each info_hash
         self.trackerIDMapping = {}
@@ -379,9 +389,11 @@ class Server():
             elif args.operation == 'download':
                 metainfo = args.metainfo
                 Client.download(metainfo)
-        
+    
         connectionLoopHandler.stop()
         connectionLoopHandler.join()
+        
+        self.regularAnnouncer.join()
         
         self.serverSocket.close()
     

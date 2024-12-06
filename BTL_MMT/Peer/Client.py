@@ -360,9 +360,9 @@ class ClientDownloader(threading.Thread):
                     continue
 
                 #? Create keep alive thread
-                # keepAlive = ClientKeepAlive(sock, peer_setting.KEEP_ALIVE_INTERVAL)
-                # keepAlive.start()
-                # keepAliveThreads.append(keepAlive)
+                keepAlive = ClientKeepAlive(sock, peer_setting.KEEP_ALIVE_INTERVAL)
+                keepAlive.start()
+                keepAliveThreads.append(keepAlive)
 
                 #? ALWAYS send bitfield
                 request = pwp.bitfield(this_bitfield['bitfield'])
@@ -403,10 +403,10 @@ class ClientDownloader(threading.Thread):
                         requester.start()
                         pieceRequested += 1
                         pieceRequesterThreads.append(requester)
+                        time.sleep(0.1)
                         
                     if (pieceRequested >= piecePerPeer):
                         break
-            
             
             #? Wait for all threads to terminate before continueing
             for thread in pieceRequesterThreads:
@@ -439,6 +439,23 @@ class ClientDownloader(threading.Thread):
                 os.remove(tempFilePath)
             except Exception as e:
                 print("Error in file mapping ", e)
+        
+        #? Send COMPLETED request to all trackers
+        complete_request = tp.TrackerRequestBuilder()
+        complete_request.set_info_hash(info_hash)
+        complete_request.set_event(tp.RequestEvent.COMPLETED)
+        
+        requesters = []
+        
+        for announce in metainfo['announce_list']:
+            requester = Server.ServerRequester(server, announce['ip'], announce['port'], complete_request)
+            requesters.append(requester)
+            requester.start()
+        
+        #? Wait for all threads to terminate before continueing
+        for requester in requesters:
+            requester.join()
+        
         
         print("Download for file(s) ", metainfo['info']['name'], " with info_hash ", info_hash, " completed.")        
             
