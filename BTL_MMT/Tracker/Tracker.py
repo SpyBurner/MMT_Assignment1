@@ -2,8 +2,10 @@ from hashlib import sha1
 import sys
 import os
 
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
+import global_setting
 import threading
 import time
 import socket
@@ -13,11 +15,15 @@ from TrackerProtocol import *
 import secrets
 
 import copy
+
+db_lock = threading.Lock()
 class TrackerDB():
     def __init__(self):
         self.swarm = {}
         
     def add(self, info_hash, peer_id, ip, port, tracker_id, seeder=False):
+        db_lock.acquire()
+        
         if info_hash not in self.swarm:
             self.swarm[info_hash] = {}
               
@@ -29,27 +35,43 @@ class TrackerDB():
             'last_announce': time.time()
         }
         self.swarm[info_hash][tracker_id] = newPeer
+        
+        db_lock.release()
     
     def finish_download(self, info_hash, tracker_id):
+        db_lock.acquire()
         if info_hash not in self.swarm:
+            db_lock.release()
             raise Exception("Swarm not found")
         
         if tracker_id not in self.swarm[info_hash]:
+            db_lock.release()
             raise Exception("finish_download: Peer not in swarm")
+        
         self.swarm[info_hash][tracker_id]['seeder'] = True
+        db_lock.release()
         
     def update_status(self, info_hash, tracker_id):
+        db_lock.acquire()
         if info_hash not in self.swarm:
+            db_lock.release()
             raise Exception("update_status: Swarm not found")
         
         if tracker_id not in self.swarm[info_hash]:
+            db_lock.release()
             raise Exception("update_status: Peer not in swarm")
+        
         self.swarm[info_hash][tracker_id]['last_announce'] = time.time()
+        db_lock.release()
             
     def delete(self, info_hash, tracker_id):
+        db_lock.acquire()
         if tracker_id not in self.swarm[info_hash]:
+            db_lock.release()
             raise Exception("delete: Peer not in swarm")
+        
         del self.swarm[info_hash][tracker_id]
+        db_lock.release()
             
     def get_peer_list(self, info_hash):
         peer_list = [
@@ -90,7 +112,7 @@ class Tracker():
         
         sock.settimeout(TRACKER_REQUEST_TIMEOUT)
         try:
-            data = sock.recv(1024)
+            data = sock.recv(global_setting.TRACKER_RESPONSE_SIZE)
             if data:
                 response = TrackerResponseBuilder()
                 request = bdecode(data)
@@ -149,7 +171,7 @@ class Tracker():
     def start(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen()
+        self.server_socket.listen(50)
         print(f"[LISTENING] Server is listening on {self.host}:{self.port}")
         
         # start checker thread
