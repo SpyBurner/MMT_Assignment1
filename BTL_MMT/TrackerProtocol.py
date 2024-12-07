@@ -28,14 +28,17 @@ class TrackerRequestBuilder():
         self.port = port
         return self
     
+    # used
     def set_uploaded(self, uploaded):
         self.uploaded = uploaded
         return self
     
+    # unused
     def set_downloaded(self, downloaded):
         self.downloaded = downloaded
         return self
     
+    # unused
     def set_left(self, left):
         self.left = left
         return self
@@ -73,6 +76,7 @@ class TrackerResponseBuilder():
         self.failure_reason = failure_reason
         return self
     
+    # unused
     def set_warning_message(self, warning_message):
         self.warning_message = warning_message
         return self
