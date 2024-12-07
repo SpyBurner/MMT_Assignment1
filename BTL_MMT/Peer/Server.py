@@ -2,6 +2,7 @@ import argparse
 import threading
 import os
 import sys
+from urllib import request
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -16,6 +17,8 @@ import BTL_MMT.Metainfo as mib
 import global_setting
 import PeerWireProtocol as pwp
 import math
+
+mapping_lock = threading.Lock()
 
 def get_host_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -52,8 +55,8 @@ class ServerRequester(threading.Thread):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((self.trackerIP, self.trackerPort))
         
-        if (self.server.unique_map_key(self.trackerIP, self.trackerPort) in self.server.trackerIDMapping):
-            self.request.set_tracker_id(self.server.trackerIDMapping[self.server.unique_map_key(self.trackerIP, self.trackerPort)])
+        if (self.server.unique_map_key(self.trackerIP, self.trackerPort, self.request.info_hash) in self.server.trackerIDMapping):
+            self.request.set_tracker_id(self.server.trackerIDMapping[self.server.unique_map_key(self.trackerIP, self.trackerPort, self.request.info_hash)])
                 
         builtRequest = self.request.build()
         
@@ -82,9 +85,9 @@ class ServerRequester(threading.Thread):
         # print(response_decode)
         
         # print("[Regular announcement] To tracker: {}:{}".format(self.trackerIP, self.trackerPort) + " for info_hash: " + builtRequest['info_hash'])
-
         if ('tracker_id' in response_decode):        
-            self.server.map_tracker_id(self.trackerIP, self.trackerPort, response_decode['tracker_id'])
+            print('[Tracker ID] ' + response_decode['tracker_id'])
+            self.server.map_tracker_id(self.trackerIP, self.trackerPort, self.request.info_hash, response_decode['tracker_id'])
         self.server.map_peer(builtRequest['info_hash'], response_decode['peers'])
         
         #? Call callback if it exists
@@ -173,7 +176,7 @@ class ServerRegularAnnouncer(threading.Thread):
                 for announce in metainfo['announce_list']:
                     trackerIP = announce['ip']
                     trackerPort = announce['port']
-                    trackerID = self.server.trackerIDMapping[self.server.unique_map_key(trackerIP, trackerPort)]
+                    trackerID = self.server.trackerIDMapping[self.server.unique_map_key(trackerIP, trackerPort, info_hash)]
                     
                     regularRequest.set_tracker_id(trackerID)
                     
@@ -396,15 +399,22 @@ class Server():
         
         self.serverSocket.close()
     
-    def unique_map_key(self, ip, port):
-        return ip + ":" + str(port)
+    def unique_map_key(self, ip, port, info_hash):
+        return ip + ":" + str(port) + ":" + info_hash
     
-    def map_tracker_id(self, tracker_ip, tracker_port, tracker_id):           
+    def map_tracker_id(self, tracker_ip, tracker_port, info_hash, tracker_id):           
         # print("[Mapping tracker_id] " + tracker_id + " for tracker: " + tracker_ip + ":" + str(tracker_port))
-        self.trackerIDMapping[self.unique_map_key(tracker_ip, tracker_port)] = tracker_id
+        mapping_lock.acquire()
+        
+        self.trackerIDMapping[self.unique_map_key(tracker_ip, tracker_port, info_hash)] = tracker_id
+        
+        mapping_lock.release()
+        
     
     def map_peer(self, info_hash, peerList):
         # print("[Mapping peer list] For info_hash: " + info_hash)
+        mapping_lock.acquire()
+        
         self.peerMapping[info_hash] = []
         for peer in peerList:
             peer_id = peer['peer_id']
@@ -417,6 +427,8 @@ class Server():
                 'ip': ip,
                 'port': port
             })
+        mapping_lock.release()
+
         
 server = None
 def start():

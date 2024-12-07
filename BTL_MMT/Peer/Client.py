@@ -183,7 +183,7 @@ class ClientPieceRequester(threading.Thread):
             response = bcoding.bdecode(response)
             
             if (response['type'] != pwp.Type.HANDSHAKE):
-                print("Peer did not respond with correct handshake.")
+                print("Peer did not respond with the correct handshake.")
                 return          
             
             self.sock.sendall(bcoding.bencode(pwp.request(self.index, self.begin, self.length)))
@@ -194,10 +194,14 @@ class ClientPieceRequester(threading.Thread):
             response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
             print('Response received')
             
-            response = bcoding.bdecode(response)
+            try: 
+                response = bcoding.bdecode(response)
+            except Exception as e:
+                # Passing on the last piece exception
+                pass
             
             if (response['type'] != pwp.Type.PIECE):
-                print("Peer did not respond with correct piece.")
+                print("Peer did not respond with the correct piece.")
                 return
             block = b'';
 
@@ -488,6 +492,7 @@ class ClientDownloader(threading.Thread):
         requesters = []
         
         for announce in metainfo['announce_list']:
+            complete_request.set_tracker_id(Server.get_server().trackerIDMapping[Server.get_server().unique_map_key(announce['ip'], announce['port'], info_hash)])
             requester = Server.ServerRequester(server, announce['ip'], announce['port'], complete_request)
             requesters.append(requester)
             requester.start()
