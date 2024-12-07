@@ -20,7 +20,6 @@ import time
 
 file_lock = threading.Lock()
     
-    
 class ClientUploader(threading.Thread):
     def __init__(self, filePath, announce_list):
         threading.Thread.__init__(self)
@@ -78,10 +77,15 @@ class ClientUploader(threading.Thread):
         piece_hashes = self.get_piece_hashes(piece_count)
         metainfo.set_pieces(b''.join(piece_hashes))
 
+        file_lock.acquire()
         try:
             os.makedirs(peer_setting.METAINFO_FILE_PATH, exist_ok=True)
         except OSError as e:
             print(f"Error creating metainfo directory: {e}")
+            file_lock.release()
+            return
+        
+        file_lock.release()
 
         # print(f"Metainfo: {metainfo.build()}")
 
@@ -91,11 +95,19 @@ class ClientUploader(threading.Thread):
         infohash = hashlib.sha1(bcoding.bencode(metainfo['info'])).hexdigest()
         
         #? Write metainfo to file with infohash as filename           
-        metainfo_path = os.path.join(peer_setting.METAINFO_FILE_PATH, infohash + global_setting.METAINFO_FILE_EXTENSION)
-        with open(metainfo_path, 'wb') as f:
-            f.write(bcoding.bencode(metainfo))
+        file_lock.acquire()
+        try: 
+            metainfo_path = os.path.join(peer_setting.METAINFO_FILE_PATH, infohash + global_setting.METAINFO_FILE_EXTENSION)
+            with open(metainfo_path, 'wb') as f:
+                f.write(bcoding.bencode(metainfo))
+        except OSError as e:
+            print(f"Error writing metainfo to file: {e}")
+            file_lock.release()
+            return
+        file_lock.release()
 
         #? Copy file to repo
+        file_lock.acquire()
         repo_path = os.path.join(peer_setting.REPO_FILE_PATH, infohash)
         try:
             os.makedirs(peer_setting.REPO_FILE_PATH, exist_ok=True)
@@ -107,7 +119,9 @@ class ClientUploader(threading.Thread):
                 shutil.copytree(self.filePath, repo_path)
         except OSError as e:
             print(f"Error copying file to repo: {e}")
-            raise(e)
+            file_lock.release()
+            return
+        file_lock.release()
             
         #? Send request to all trackers
         for announce in self.announce_list:
@@ -145,8 +159,13 @@ class ClientKeepAlive(threading.Thread):
         self.isRunning = False
 
 class ClientPieceRequester(threading.Thread):
-    def __init__(self, sock, index, begin, length, filePath):
-        self.sock = sock
+    def __init__(self, ip, port, index, begin, length, filePath, info_hash):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
+        self.sock.connect((ip, port))
+        
+        self.info_hash = info_hash
+        
         self.index = index
         self.begin = begin
         self.length = length
@@ -158,6 +177,15 @@ class ClientPieceRequester(threading.Thread):
         print(f"Requesting piece {self.index} from peer " + self.sock.getpeername()[0])
         self.sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
         try:
+            # send handshake
+            self.sock.sendall(bcoding.bencode(pwp.handshake(self.info_hash, self.begin)))
+            response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+            response = bcoding.bdecode(response)
+            
+            if (response['type'] != pwp.Type.HANDSHAKE):
+                print("Peer did not respond with correct handshake.")
+                return          
+            
             self.sock.sendall(bcoding.bencode(pwp.request(self.index, self.begin, self.length)))
             
             print('Request sent')
@@ -190,6 +218,9 @@ class ClientPieceRequester(threading.Thread):
             
         except Exception as e:
             print(f"Error in ClientPieceRequester: {e}")
+            
+        self.sock.close()
+
 class ClientDownloader(threading.Thread):
     def __init__(self, metainfoPath):
         threading.Thread.__init__(self)
@@ -204,21 +235,29 @@ class ClientDownloader(threading.Thread):
         
         # print("[Metainfo] ", metainfo)
         
+        file_lock.acquire()
         #? Create metainfo directory if it does not exist
         try:
             os.makedirs(peer_setting.METAINFO_FILE_PATH, exist_ok=True)
             print("Metainfo directory ensured.")
         except Exception as e:
+            file_lock.release()
             print("Error creating metainfo directory: ", e)
+            return
+            
+        file_lock.release()
         
         #? Copy metainfo into the metainfo directory
         #TODO Rename metainfo file to info_hash
+        file_lock.acquire()
         try:
             shutil.copy(self.metainfoPath, peer_setting.METAINFO_FILE_PATH)
             print("Metainfo file copied.")
         except Exception as e:
-            print("Metainfo file copy error: ", e)
-        
+            file_lock.release()
+            print("Metainfo file copy error: " + e)
+            return
+        file_lock.release()
         server = Server.get_server()
         
         request = tp.TrackerRequestBuilder()
@@ -266,6 +305,15 @@ class ClientDownloader(threading.Thread):
         
         pieceCount = math.ceil(totalLength / pieceLength)
         
+        pieces = metainfo['info']['pieces']
+        
+        check_downloaded_bitfield = pwp.generate_bitfield(pieces, pieceCount, pieceLength, os.path.join(peer_setting.REPO_FILE_PATH, info_hash))
+        
+        if (sum(check_downloaded_bitfield) == pieceCount):
+            print("File ", metainfo['info']['name']," already downloaded.")
+            return
+        
+        file_lock.acquire()
         #? Create file in repo with filler bytes
         tempFilePath = os.path.join(peer_setting.REPO_FILE_PATH, info_hash, info_hash)
         try: 
@@ -276,20 +324,23 @@ class ClientDownloader(threading.Thread):
                 print("File already exist in repo.")
         except Exception as e:
             print("Error creating file in repo: ", e)
+            file_lock.release()
+            return
+        file_lock.release()
         
         print('Temp file created')
-        
-        pieces = metainfo['info']['pieces']
-        
-        print('Metainfo extracts: ', pieceLength, totalLength, pieceCount, pieces)
         
         tryCount = 0;
         tryLimit = 5;
         
         print('Starting download...')
         
+        lastProgress = 0
+        progress = -1
+        
         while True:
-            tryCount += 1
+            if (progress == lastProgress):
+                tryCount += 1
             if (tryCount > tryLimit):
                 print("Download failed after ", tryLimit, " attempts.")
                 #? Leave swarm
@@ -312,9 +363,13 @@ class ClientDownloader(threading.Thread):
                     print("Error deleting metainfo file: ", e)
                 return
             
+            lastProgress = progress
+            
             this_bitfield = pwp.bitfield(pwp.generate_bitfield(pieces, pieceCount, pieceLength, tempFilePath))
             
-            print("Current number of pieces downloaded: ", sum(this_bitfield['bitfield']))
+            print("Current number of pieces downloaded: ", sum(this_bitfield['bitfield']),'/', pieceCount)
+            
+            progress = sum(this_bitfield['bitfield'])
             
             #? Break when all pieces are downloaded
             if (sum(this_bitfield['bitfield']) == pieceCount):
@@ -378,7 +433,8 @@ class ClientDownloader(threading.Thread):
                 
                 print("[Bitfield] received from peer: ", peer['ip'], " bitfield: ", response['bitfield'])
                 
-                peerConnections.append((sock, response['bitfield']))
+                sock.close()
+                peerConnections.append((peer['ip'], peer['port'], response['bitfield']))
 
             #? Check connection list
             if (len(peerConnections) == 0):
@@ -391,13 +447,14 @@ class ClientDownloader(threading.Thread):
             #? Spread the load evenly
             pieceRequesterThreads = []
             
-            piecePerPeer = math.ceil(pieceCount / len(peerConnections))
+            piecePerPeer = min(math.ceil(pieceCount / len(peerConnections)), peer_setting.PEER_CLIENT_MAX_CONNECTION)
+            print('Piece per peer: ', piecePerPeer)
             for connection in peerConnections:
                 pieceRequested = 0
                 #? Check if piece is already downloaded
                 for i in range(pieceCount):
-                    if (requestedBitfield[i] == 0 and connection[1][i] == 1):
-                        requester = ClientPieceRequester(connection[0], i, 0, pieceLength, tempFilePath)
+                    if (requestedBitfield[i] == 0 and connection[2][i] == 1):
+                        requester = ClientPieceRequester(connection[0], connection[1], i, 0, pieceLength, tempFilePath, info_hash)
                         requestedBitfield[i] = 1
                         requester.start()
                         pieceRequested += 1
@@ -415,14 +472,13 @@ class ClientDownloader(threading.Thread):
             for thread in keepAliveThreads:
                 thread.stop()
         
-        #TODO Multiple file case where
+        file_lock.acquire()
         #? Map temp file to the actual file(s)
         if isSingleFile:
             try:
                 os.rename(tempFilePath, os.path.join(peer_setting.REPO_FILE_PATH, info_hash, metainfo['info']['name']))
             except Exception as e:
                 print("Error renaming file: ", e)
-            
         else:
             try:               
                 with open(tempFilePath, 'rb') as tempFile:
@@ -437,8 +493,11 @@ class ClientDownloader(threading.Thread):
                 # Delete temp file
                 os.remove(tempFilePath)
             except Exception as e:
+                file_lock.release()
                 print("Error in file mapping ", e)
+                return
         
+        file_lock.release()
         #? Send COMPLETED request to all trackers
         complete_request = tp.TrackerRequestBuilder()
         complete_request.set_info_hash(info_hash)
@@ -478,14 +537,15 @@ def upload(filePath, announce_list):
     uploader = ClientUploader(filePath, announce_list)
     uploader.start()
 
-def download(metainfo):
-    print("Downloading file with metainfo: ", metainfo)
-    
-    if (metainfo[0] == '"' and metainfo[-1] == '"'):
-        metainfo = metainfo[1:-1]
-    
-    downloader = ClientDownloader(metainfo)
-    downloader.start()
+def download(metainfos):
+    for metainfo in metainfos:
+        print("Downloading file with metainfo: ", metainfo)
+        
+        if (metainfo[0] == '"' and metainfo[-1] == '"'):
+            metainfo = metainfo[1:-1]
+        
+        downloader = ClientDownloader(metainfo)
+        downloader.start()
     
 def ListFiles():
     print("Listing local files.")

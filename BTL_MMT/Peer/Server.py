@@ -179,8 +179,7 @@ class ServerRegularAnnouncer(threading.Thread):
                     
                     requester = ServerRequester(self.server, trackerIP, trackerPort, regularRequest, (get_server().isRunning))
                     requester.start()
-                
-        
+                  
 class ServerUploader(threading.Thread):
     def __init__(self, server, sock, addr, timeout=peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT):
         threading.Thread.__init__(self, daemon=True)
@@ -223,7 +222,7 @@ class ServerUploader(threading.Thread):
                         self.sock.close()
                         return
                     
-                    print("Found metainfo: ", metainfo)
+                    print("Found metainfo: ")
                     
                     pieceLength = metainfo['info']['piece length']
                     pieces = metainfo['info']['pieces']
@@ -326,7 +325,6 @@ class Server():
         self.ip, self.port = get_host_ip()
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serverSocket.bind((self.ip, self.port))
-        
         self.serverSocket.settimeout(peer_setting.PEER_SERVER_TIMEOUT)
         
         print("Listening on: {}:{}".format(self.ip, self.port))
@@ -365,8 +363,8 @@ class Server():
         upload_parser.add_argument('--tracker', '-t', type=str, action='append', nargs=2, metavar=('IP', 'PORT'), required=True, help='Tracker IP and port')
 
         # Download task
-        download_parser = subparsers.add_parser('download', help='Download a file')
-        download_parser.add_argument('--metainfo', '-m', type=str, required=True, help='Path to the metainfo file')
+        download_parser = subparsers.add_parser('download', help='Download file(s)')
+        download_parser.add_argument('--metainfo', '-m', type=str, required=True, help='Path to the metainfo file', nargs='*', metavar='METAINFO')
 
         parser.print_usage();
         while self.isRunning:
@@ -387,8 +385,9 @@ class Server():
                 tracker_list = [[ip, int(port)] for ip, port in trackers]                
                 Client.upload(filePath, tracker_list)
             elif args.operation == 'download':
-                metainfo = args.metainfo
-                Client.download(metainfo)
+                metainfos = args.metainfo
+                print(metainfos)
+                Client.download(metainfos)
     
         connectionLoopHandler.stop()
         connectionLoopHandler.join()
