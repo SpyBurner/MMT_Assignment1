@@ -370,71 +370,70 @@ class ClientDownloader(threading.Thread):
             keepAliveThreads = []
             server = Server.get_server()
             
-            for peer in peerList:
-                #? Skip self
-                if (peer['ip'] == server.ip and peer['port'] == server.port):
-                    continue
-                
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
-                try: 
-                    sock.connect((peer['ip'], peer['port']))
-                except Exception as e:
-                    print("Error connecting to peer: ", e)
-                    continue
-                
-                #? Send handshake
-                handshake = pwp.handshake(info_hash, Server.get_server().peerID)
-                sock.sendall(bcoding.bencode(handshake))
-                
-                print("[Handshake] sent to peer: ", peer['ip'])
-                
-                #? Receive handshake
-                try: 
-                    response = sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
-                except Exception as e:
-                    print("Error receiving handshake from peer: ", e)
-                    sock.close()
-                    continue
-                
-                response = bcoding.bdecode(response)
-                
-                print("[Handshake] received from peer: ", peer['ip'])
-                
-                if (response['type'] != pwp.Type.HANDSHAKE or response['info_hash'] != info_hash):
-                    print("Peer " + peer['ip'] + " did not respond with correct handshake.")
-                    sock.close()
-                    continue
+            hand_shake_lock = threading.Lock()
 
-                #? Create keep alive thread
-                # keepAlive = ClientKeepAlive(sock, peer_setting.KEEP_ALIVE_INTERVAL)
-                # keepAlive.start()
-                # keepAliveThreads.append(keepAlive)
-
-                #? ALWAYS send bitfield
-                request = pwp.bitfield(this_bitfield['bitfield'])
-                sock.sendall(bcoding.bencode(request))
-                
-                #? Receive bitfield
+            def process_peer(peer):
+                # Your existing code to process a single peer goes here
+                # For example:
                 try:
-                    response = sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
-                except Exception as e:
-                    print("Error receiving bitfield from peer: ", e)
-                    sock.close()
-                    continue
-                
-                response = bcoding.bdecode(response)
-                
-                if (response['type'] != pwp.Type.BITFIELD):
-                    print("Peer " + peer['ip'] + " did not respond with correct bitfield.")
-                    sock.close()
-                    continue
-                
-                print("[Bitfield] received from peer: ", peer['ip'], " bitfield: ", response['bitfield'])
-                
-                sock.close()
-                peerConnections.append((peer['ip'], peer['port'], response['bitfield']))
+                    # Skip self
+                    if peer['ip'] == server.ip and peer['port'] == server.port:
+                        return
 
+                    # Send handshake
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
+                    sock.connect((peer['ip'], peer['port']))
+                    
+                    handshake = pwp.handshake(info_hash, Server.get_server().peerID)
+                    sock.sendall(bcoding.bencode(handshake))
+                    
+                    print("[Handshake] sent to peer: ", peer['ip'])
+                    
+                    # Receive handshake
+                    response = sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+                    response = bcoding.bdecode(response)
+                    
+                    print("[Handshake] received from peer: ", peer['ip'])
+                    
+                    if response['type'] != pwp.Type.HANDSHAKE or response['info_hash'] != info_hash:
+                        print("Peer " + peer['ip'] + " did not respond with correct handshake.")
+                        sock.close()
+                        return
+                    
+                    # Send bitfield
+                    request = pwp.bitfield(this_bitfield['bitfield'])
+                    sock.sendall(bcoding.bencode(request))
+                    
+                    # Receive bitfield
+                    response = sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+                    response = bcoding.bdecode(response)
+                    
+                    if response['type'] != pwp.Type.BITFIELD:
+                        print("Peer " + peer['ip'] + " did not respond with correct bitfield.")
+                        sock.close()
+                        return
+                    
+                    print("[Bitfield] received from peer: ", peer['ip'], " bitfield: ", response['bitfield'])
+                    
+                    sock.close()
+                    hand_shake_lock.acquire()
+                    peerConnections.append((peer['ip'], peer['port'], response['bitfield']))
+                    print('Peer added to connection list: ', peer['ip'], peer['port'])
+                    hand_shake_lock.release()
+                except Exception as e:
+                    print("Error processing peer: ", e)
+
+            # Create and start a thread for each peer in the peerList
+            threads = []
+            for peer in peerList:
+                thread = threading.Thread(target=process_peer, args=(peer,))
+                threads.append(thread)
+                thread.start()
+
+            # Wait for all threads to complete
+            for thread in threads:
+                thread.join()
             #? Check connection list
             if (len(peerConnections) == 0):
                 print("[Download attempt", tryCount," ] No peers connected.")
@@ -448,18 +447,25 @@ class ClientDownloader(threading.Thread):
             
             piecePerPeer = min(math.ceil(pieceCount / len(peerConnections)), peer_setting.PEER_CLIENT_MAX_CONNECTION)
             print('Piece per peer: ', piecePerPeer)
-            for connection in peerConnections:
-                pieceRequested = 0
-                #? Check if piece is already downloaded
-                for i in range(pieceCount):
-                    if (requestedBitfield[i] == 0 and connection[2][i] == 1):
-                        requester = ClientPieceRequester(connection[0], connection[1], i, 0, pieceLength, tempFilePath, info_hash)
-                        requestedBitfield[i] = 1
-                        pieceRequested += 1
-                        pieceRequesterThreads.append(requester)
-                        
-                    if (pieceRequested >= piecePerPeer):
-                        break
+            
+            pieceRequested = [0] * len(peerConnections)
+            while True:
+                new_requests = False
+                for i, connection in enumerate(peerConnections):
+                    if (pieceRequested[i] >= piecePerPeer):
+                        continue
+                    for j in range(pieceCount):
+                        if (requestedBitfield[j] == 0 and connection[2][j] == 1):
+                            requester = ClientPieceRequester(connection[0], connection[1], j, 0, pieceLength, tempFilePath, info_hash)
+                            requestedBitfield[j] = 1
+                            pieceRequested[i] += 1
+                            pieceRequesterThreads.append(requester)
+                            
+                            new_requests = True
+                            break
+                        #? Check if piece is already downloaded                       
+                if (not new_requests):
+                    break
             
             #? Start all piece requester threads
             for thread in pieceRequesterThreads:
