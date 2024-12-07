@@ -343,24 +343,6 @@ class ClientDownloader(threading.Thread):
                 tryCount += 1
             if (tryCount > tryLimit):
                 print("Download failed after ", tryLimit, " attempts.")
-                #? Leave swarm
-                stop_request = tp.TrackerRequestBuilder()
-                stop_request.set_info_hash(info_hash)
-                stop_request.set_event(tp.RequestEvent.STOPPED)
-                for announce in metainfo['announce_list']:
-                    requester = Server.ServerRequester(server, announce['ip'], announce['port'], stop_request)  
-                    requesters.append(requester)
-                    requester.start()
-                #? Delete temp file
-                try:
-                    os.remove(tempFilePath)
-                except Exception as e:
-                    print("Error deleting temp file: ", e)
-                #? Delete metainfo file
-                try:
-                    os.remove(os.path.join(peer_setting.METAINFO_FILE_PATH, info_hash + global_setting.METAINFO_FILE_EXTENSION))
-                except Exception as e:
-                    print("Error deleting metainfo file: ", e)
                 return
             
             lastProgress = progress

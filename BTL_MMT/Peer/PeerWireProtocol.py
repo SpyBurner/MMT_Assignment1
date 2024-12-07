@@ -58,6 +58,7 @@ def handshake(info_hash, peer_id):
         'peer_id': peer_id,
     }
     
+# unused
 def keep_alive():
     return {
         'type': Type.KEEP_ALIVE,
@@ -73,7 +74,9 @@ def request(index, begin, length):
     return {
         'type': Type.REQUEST,
         'index': index,
+        # ununsed
         'begin': begin,
+        # unused
         'length': length,        
     }
 
@@ -81,6 +84,7 @@ def piece(index, begin, block):
     return {
         'type': Type.PIECE,
         'index': index,
+        # unused
         'begin': begin,
         'block': block
     }
