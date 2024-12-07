@@ -1,4 +1,6 @@
 import argparse
+from ctypes import WinError
+import errno
 import threading
 import os
 import sys
@@ -294,6 +296,13 @@ class ServerUploader(threading.Thread):
                     pass
         except socket.timeout:
             print("Connection timeout for peer: " + self.addr[0] + ":" + str(self.addr[1]))
+        except socket.error as e:
+            if e.errno == errno.WSAECONNRESET:
+                print("Connection reset by peer: " + self.addr[0] + ":" + str(self.addr[1]))
+            else:
+                print(f"WinError occurred: {e}")
+        except Exception as e:
+            print(f"Exception occurred: {e}")
                     
 #? Run a thread to loop on behalf of the main thread to accept incoming connections.
 class ServerConnectionLoopHandler(threading.Thread):
@@ -389,7 +398,6 @@ class Server():
                 Client.upload(filePath, tracker_list)
             elif args.operation == 'download':
                 metainfos = args.metainfo
-                print(metainfos)
                 Client.download(metainfos)
     
         connectionLoopHandler.stop()

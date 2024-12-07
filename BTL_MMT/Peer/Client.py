@@ -191,15 +191,11 @@ class ClientPieceRequester(threading.Thread):
             print('Request sent')
             
             print('Waiting for response...')
-            response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+            data = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
             print('Response received')
             
-            try: 
-                response = bcoding.bdecode(response)
-            except Exception as e:
-                # Passing on the last piece exception
-                pass
-            
+            response = bcoding.bdecode(data)
+
             if (response['type'] != pwp.Type.PIECE):
                 print("Peer did not respond with the correct piece.")
                 return
@@ -221,7 +217,9 @@ class ClientPieceRequester(threading.Thread):
             file_lock.release()
             
         except Exception as e:
-            print(f"Error in ClientPieceRequester: {e}")
+            #? Only the exception where the last piece is not the same size as the rest is caught here
+            # print(f"Error in ClientPieceRequester: {e}")
+            pass
             
         self.sock.close()
 
@@ -251,19 +249,8 @@ class ClientDownloader(threading.Thread):
             
         file_lock.release()
         
-        #? Copy metainfo into the metainfo directory
-        #TODO Rename metainfo file to info_hash
-        file_lock.acquire()
-        try:
-            shutil.copy(self.metainfoPath, peer_setting.METAINFO_FILE_PATH)
-            print("Metainfo file copied.")
-        except Exception as e:
-            file_lock.release()
-            print("Metainfo file copy error: " + e)
-            return
-        file_lock.release()
         server = Server.get_server()
-        
+    
         request = tp.TrackerRequestBuilder()
         request.set_info_hash(info_hash)
         request.set_port(server.port)
@@ -283,6 +270,20 @@ class ClientDownloader(threading.Thread):
             requesters.append(requester)
             requester.start()
             print('Started request sent to tracker: ', announce)
+        
+        #? Copy metainfo into the metainfo directory
+        #TODO Rename metainfo file to info_hash
+        file_lock.acquire()
+        try:
+            shutil.copy(self.metainfoPath, peer_setting.METAINFO_FILE_PATH)
+            print("Metainfo file copied.")
+        except Exception as e:
+            file_lock.release()
+            print("Metainfo file copy error: " + e)
+            return
+        file_lock.release()
+
+        
         
         #? Wait for all threads to terminate before continueing
         for requester in requesters:
@@ -389,7 +390,13 @@ class ClientDownloader(threading.Thread):
                 print("[Handshake] sent to peer: ", peer['ip'])
                 
                 #? Receive handshake
-                response = sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+                try: 
+                    response = sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+                except Exception as e:
+                    print("Error receiving handshake from peer: ", e)
+                    sock.close()
+                    continue
+                
                 response = bcoding.bdecode(response)
                 
                 print("[Handshake] received from peer: ", peer['ip'])
@@ -409,7 +416,13 @@ class ClientDownloader(threading.Thread):
                 sock.sendall(bcoding.bencode(request))
                 
                 #? Receive bitfield
-                response = sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+                try:
+                    response = sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+                except Exception as e:
+                    print("Error receiving bitfield from peer: ", e)
+                    sock.close()
+                    continue
+                
                 response = bcoding.bdecode(response)
                 
                 if (response['type'] != pwp.Type.BITFIELD):
@@ -442,13 +455,15 @@ class ClientDownloader(threading.Thread):
                     if (requestedBitfield[i] == 0 and connection[2][i] == 1):
                         requester = ClientPieceRequester(connection[0], connection[1], i, 0, pieceLength, tempFilePath, info_hash)
                         requestedBitfield[i] = 1
-                        requester.start()
                         pieceRequested += 1
                         pieceRequesterThreads.append(requester)
-                        time.sleep(0.1)
                         
                     if (pieceRequested >= piecePerPeer):
                         break
+            
+            #? Start all piece requester threads
+            for thread in pieceRequesterThreads:
+                thread.start()
             
             #? Wait for all threads to terminate before continueing
             for thread in pieceRequesterThreads:
@@ -500,7 +515,6 @@ class ClientDownloader(threading.Thread):
         #? Wait for all threads to terminate before continueing
         for requester in requesters:
             requester.join()
-        
         
         print("Download for file(s) ", metainfo['info']['name'], " with info_hash ", info_hash, " completed.")        
             
