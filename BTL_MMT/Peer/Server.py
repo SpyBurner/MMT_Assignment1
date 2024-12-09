@@ -1,5 +1,4 @@
 import argparse
-from ctypes import WinError
 import errno
 import threading
 import os
