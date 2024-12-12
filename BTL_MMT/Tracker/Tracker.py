@@ -99,6 +99,7 @@ class Tracker():
                 for peer in dbSwarmClone[info_hash]:
                     if time.time() - dbSwarmClone[info_hash][peer]['last_announce'] > TIMEOUT_PER_SWARM:
                         self.db.delete(info_hash, peer)
+                        print(f"[TIMEOUT] Peer {peer} in swarm {info_hash} has timed out: no announce for {TIMEOUT_PER_SWARM} seconds")
             time.sleep(TRACKER_INTERVAL)
             
     def require_fields(self, request, fields):
@@ -195,6 +196,7 @@ class Tracker():
         # Connect to the same IP to stop the accept thread
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((self.host, self.port))
+            s.close()
         self.server_socket.close()
     
 def start():
