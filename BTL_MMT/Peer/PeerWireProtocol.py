@@ -6,6 +6,7 @@ file_lock = threading.Lock()
 
 # read all files in path and return the data
 def get_data_from_path(path):
+    print("Current running path: ", os.getcwd())
     print("Getting data from path: ", path)
     data = b''
     

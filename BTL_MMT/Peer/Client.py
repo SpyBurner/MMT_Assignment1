@@ -214,6 +214,9 @@ class ClientPieceRequester(threading.Thread):
         data = recv(self.sock, peer_setting.PEER_WIRE_MESSAGE_SIZE)
         print('Response received')
         
+        # if (data == b''):
+        #     return;
+        
         response = bcoding.bdecode(data)
 
         if (response['type'] != pwp.Type.PIECE):
@@ -299,7 +302,7 @@ class ClientDownloader(threading.Thread):
             print("Metainfo file copied.")
         except Exception as e:
             file_lock.release()
-            print("Metainfo file copy error: " + e)
+            print("Metainfo file copy error: ", e)
             return
         file_lock.release()
 
@@ -355,8 +358,8 @@ class ClientDownloader(threading.Thread):
         
         print('Temp file created')
         
-        tryCount = 0;
-        tryLimit = 5;
+        tryCount = 0
+        tryLimit = 5
         
         print('Starting download...')
         
