@@ -554,7 +554,17 @@ class ClientLister(threading.Thread):
         threading.Thread.__init__(self)
 
     def run(self):
-        print("Implement listing logic here.")
+        metainfos = mi.get_all(peer_setting.METAINFO_FILE_PATH)
+        if len(metainfos) == 0:
+            print("No metainfo found.")
+        else: 
+            for metainfo in metainfos:
+
+                info_hash = hashlib.sha1(bcoding.bencode(metainfo['info'])).hexdigest()       
+                name = metainfo['info']['name']
+                piece_length = metainfo['info']['piece length']
+                piece_count = math.ceil(metainfo['info']['length'] / piece_length)
+                print("Name: ", name, " Info_hash: ", info_hash, " Piece length: ", piece_length, " Piece count: ", piece_count)
 
 #! Create the right type of thread and start it.
 def upload(filePath, announce_list):
@@ -583,8 +593,7 @@ def download(metainfos):
         downloader = ClientDownloader(metainfo)
         downloader.start()
     
-def ListFiles():
-    print("Listing local files.")
+def list_files():
     
     lister = ClientLister()
     lister.start()

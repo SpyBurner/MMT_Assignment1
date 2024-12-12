@@ -367,6 +367,9 @@ class Server():
 
         # Exit task
         exit_parser = subparsers.add_parser('exit', help='Stop the server')
+        
+        # List task
+        list_parser = subparsers.add_parser('list', help='List all local files')
 
         # Upload task
         upload_parser = subparsers.add_parser('upload', help='Upload a file')
@@ -398,6 +401,8 @@ class Server():
             elif args.operation == 'download':
                 metainfos = args.metainfo
                 Client.download(metainfos)
+            elif args.operation == 'list':
+                Client.list_files()
     
         connectionLoopHandler.stop()
         connectionLoopHandler.join()
