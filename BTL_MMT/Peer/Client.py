@@ -560,10 +560,10 @@ class ClientLister(threading.Thread):
 def upload(filePath, announce_list):
     print("Uploading file: ", filePath, " to tracker: ")
     
-    if (metainfo[0] == '"' and metainfo[-1] == '"'):
-        metainfo = metainfo[1:-1]
-    if (metainfo[0] == '\'' and metainfo[-1] == '\''):
-        metainfo = metainfo[1:-1]
+    if (filePath[0] == '"' and filePath[-1] == '"'):
+        filePath = filePath[1:-1]
+    if (filePath[0] == '\'' and filePath[-1] == '\''):
+        filePath = filePath[1:-1]
     
     for announce in announce_list:
         print(announce)
