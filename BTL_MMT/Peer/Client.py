@@ -19,6 +19,18 @@ import PeerWireProtocol as pwp
 import time
 
 file_lock = threading.Lock()
+
+def recv(sock, max_size):
+    data = b''
+    while True:
+        data_chunk = sock.recv(1024)
+        if data_chunk:
+            data += data_chunk
+        else:
+            break
+        if len(data) >= max_size:
+            break
+    return data
     
 class ClientUploader(threading.Thread):
     def __init__(self, filePath, announce_list):
@@ -176,50 +188,51 @@ class ClientPieceRequester(threading.Thread):
         #? Request a piece and write to file on sucess
         print(f"Requesting piece {self.index} from peer " + self.sock.getpeername()[0])
         self.sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
-        try:
+        # try:
             # send handshake
-            self.sock.sendall(bcoding.bencode(pwp.handshake(self.info_hash, self.begin)))
-            response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
-            response = bcoding.bdecode(response)
-            
-            if (response['type'] != pwp.Type.HANDSHAKE):
-                print("Peer did not respond with the correct handshake.")
-                return          
-            
-            self.sock.sendall(bcoding.bencode(pwp.request(self.index, self.begin, self.length)))
-            
-            print('Request sent')
-            
-            print('Waiting for response...')
-            data = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
-            print('Response received')
-            
-            response = bcoding.bdecode(data)
+        self.sock.sendall(bcoding.bencode(pwp.handshake(self.info_hash, self.begin)))
+        # response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+        response = bcoding.bdecode(response)
+        
+        if (response['type'] != pwp.Type.HANDSHAKE):
+            print("Peer did not respond with the correct handshake.")
+            return          
+        
+        self.sock.sendall(bcoding.bencode(pwp.request(self.index, self.begin, self.length)))
+        
+        print('Request sent')
+        
+        print('Waiting for response...')
+        # data = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+        data = recv(self.sock, peer_setting.PEER_WIRE_MESSAGE_SIZE)
+        print('Response received')
+        
+        response = bcoding.bdecode(data)
 
-            if (response['type'] != pwp.Type.PIECE):
-                print("Peer did not respond with the correct piece.")
-                return
-            block = b'';
+        if (response['type'] != pwp.Type.PIECE):
+            print("Peer did not respond with the correct piece.")
+            return
+        block = b'';
 
-            if (type(response['block']) == str):
-                block = bytes(response['block'], 'utf-8')
-            elif (type(response['block']) == bytes):
-                block = response['block']
-            else:
-                raise Exception("Invalid block type")
+        if (type(response['block']) == str):
+            block = bytes(response['block'], 'utf-8')
+        elif (type(response['block']) == bytes):
+            block = response['block']
+        else:
+            raise Exception("Invalid block type")
 
-            file_lock.acquire()
+        file_lock.acquire()
+        
+        with open(self.filePath, 'r+b') as f:
+            f.seek(self.index * global_setting.PIECE_SIZE + self.begin)
+            f.write(block)
             
-            with open(self.filePath, 'r+b') as f:
-                f.seek(self.index * global_setting.PIECE_SIZE + self.begin)
-                f.write(block)
-                
-            file_lock.release()
+        file_lock.release()
             
-        except Exception as e:
-            #? Only the exception where the last piece is not the same size as the rest is caught here
-            # print(f"Error in ClientPieceRequester: {e}")
-            pass
+        # except Exception as e:
+        #     # ? Only the exception where the last piece is not the same size as the rest is caught here
+        #     print(f"Error in ClientPieceRequester: {e}")
+        #     pass
             
         self.sock.close()
 
