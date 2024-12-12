@@ -387,6 +387,8 @@ class ClientDownloader(threading.Thread):
             
             peerList = Server.get_server().peerMapping[info_hash]
             
+            print("Retrieved peer list: ", peerList)
+            
             #? Connect to peers for handshake and bitfield exchange            
             # Format: (socket, bitfield)
             peerConnections = []
@@ -558,8 +560,10 @@ class ClientLister(threading.Thread):
 def upload(filePath, announce_list):
     print("Uploading file: ", filePath, " to tracker: ")
     
-    if (filePath[0] == '"' and filePath[-1] == '"'):
-        filePath = filePath[1:-1]
+    if (metainfo[0] == '"' and metainfo[-1] == '"'):
+        metainfo = metainfo[1:-1]
+    if (metainfo[0] == '\'' and metainfo[-1] == '\''):
+        metainfo = metainfo[1:-1]
     
     for announce in announce_list:
         print(announce)
@@ -572,6 +576,8 @@ def download(metainfos):
         print("Downloading file with metainfo: ", metainfo)
         
         if (metainfo[0] == '"' and metainfo[-1] == '"'):
+            metainfo = metainfo[1:-1]
+        if (metainfo[0] == '\'' and metainfo[-1] == '\''):
             metainfo = metainfo[1:-1]
         
         downloader = ClientDownloader(metainfo)
