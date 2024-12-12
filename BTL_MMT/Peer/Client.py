@@ -23,7 +23,12 @@ file_lock = threading.Lock()
 def recv(sock, max_size):
     data = b''
     while True:
-        data_chunk = sock.recv(1024)
+        
+        try:
+            data_chunk = sock.recv(1024)
+        except socket.timeout:
+            data_chunk = None
+            
         if data_chunk:
             data += data_chunk
         else:
@@ -191,7 +196,9 @@ class ClientPieceRequester(threading.Thread):
         # try:
             # send handshake
         self.sock.sendall(bcoding.bencode(pwp.handshake(self.info_hash, self.begin)))
-        # response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+        
+        response = self.sock.recv(peer_setting.PEER_WIRE_MESSAGE_SIZE)
+        
         response = bcoding.bdecode(response)
         
         if (response['type'] != pwp.Type.HANDSHAKE):
