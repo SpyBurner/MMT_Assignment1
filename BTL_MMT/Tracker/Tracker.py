@@ -83,14 +83,46 @@ class TrackerDB():
     def generate_tracker_id(self):
         return secrets.token_hex(16)
 
-class TrackerGlobalDB():
+class TrackerPeerStat():
     def __init__(self):
-        # Format peers[(ip, port)]
+        # Format peers[(ip, port)]['info_hash'] = {
+        #     uploaded: 0,
+        #     downloaded: 0,
+        #     left: 0
+        # }
         self.peers = {}
+    
+    def add(self, info_hash, ip, port, uploaded, downloaded, left):
+        if (ip, port) not in self.peers:
+            self.peers[(ip, port)] = {}
+        
+        if (info_hash) not in self.peers[(ip, port)]:
+            self.peers[(ip, port)][info_hash] = {
+                'uploaded': 0,
+                'downloaded': 0,
+                'left': 0
+            }
+        
+        self.peers[(ip, port)][info_hash] = {
+            'uploaded': uploaded,
+            'downloaded': downloaded,
+            'left': left
+        }
+        
+    def remove(self, info_hash, ip, port):
+        peers_copy = copy.deepcopy(self.peers)
+        
+        if (ip, port) in peers_copy:
+            if info_hash in peers_copy[(ip, port)]:
+                del self.peers[(ip, port)][info_hash]
+        
+        if len(self.peers[(ip, port)]) == 0:
+            del self.peers[(ip, port)]
 
 class Tracker():
     def __init__(self, port):
         self.db = TrackerDB()
+        self.peer_stat = TrackerPeerStat()
         self.host = get_host_default_interface_ip()
         self.port = port
         self.is_running = True
@@ -135,7 +167,13 @@ class Tracker():
                     response.set_tracker_id(tracker_id)
                     
                     self.require_fields(request, ['peer_id', 'port', 'left'])
+                    
+                    uploaded = request['uploaded']
+                    downloaded = request['downloaded']
                     left = request["left"]
+                    
+                    self.peer_stat.add(request['info_hash'], addr[0], request['port'], uploaded, downloaded, left)
+                    
                     if left == 0:
                         # peer already has the file
                         self.db.add(request["info_hash"], request["peer_id"], addr[0], request["port"], tracker_id, seeder=True)
@@ -151,6 +189,8 @@ class Tracker():
                     if event == RequestEvent.STOPPED:
                         print("Peer request STOPPED")
                         self.db.delete(request["info_hash"], request["tracker_id"])
+                        
+                        self.peer_stat.remove(request['info_hash'], addr[0], request['port'])
                     # peer completed the download
                     elif event == RequestEvent.COMPLETED:
                         print("Peer request COMPLETED")
@@ -211,6 +251,10 @@ class Tracker():
     def showStatHandler(self):
         print("[Tracker Stats]")
         
+        for key, value in self.peer_stat.peers.items():
+            print(f"[Peer]: {key}")
+            for info_hash, stat in value.items():
+                print(f"Info Hash: {info_hash}, Uploaded: {stat['uploaded']}, Downloaded: {stat['downloaded']}, Left: {stat['left']}")
     
     def showStat(self):
         stat_thread = threading.Thread(target=self.showStatHandler)
