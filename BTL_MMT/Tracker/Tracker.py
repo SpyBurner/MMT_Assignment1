@@ -134,8 +134,7 @@ class Tracker():
     def __init__(self, port):
         self.db = TrackerDB()
         self.peer_stat = TrackerPeerStat()
-        self.host = get_host_default_interface_ip()
-        self.port = port
+        self.host, self.port = get_host_default_interface_ip()
         self.is_running = True
         
     def check_timeout(self):
@@ -292,10 +291,12 @@ def start():
 def get_host_default_interface_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-       s.connect(('8.8.8.8',1))
-       ip = s.getsockname()[0]
+        s.connect(('8.8.8.8',1))
+        ip = s.getsockname()[0]
+        port = s.getsockname()[1]
     except Exception:
-       ip = '192.168.56.106'
+        ip = 'localhost'
+        port = peer_setting.PEER_SERVER_DEFAULT_PORT
     finally:
-       s.close()
-    return ip
+        s.close()
+    return (ip, port)
