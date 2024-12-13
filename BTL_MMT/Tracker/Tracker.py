@@ -192,6 +192,8 @@ class Tracker():
                         self.db.add(request["info_hash"], request["peer_id"], addr[0], request["port"], tracker_id)
                     else:
                         raise Exception("Invalid 'left' value")
+                    
+                    self.db.update_status(request['info_hash'], tracker_id)
                 else:
                     self.require_fields(request, ['tracker_id'])
                     tracker_id = request["tracker_id"]
@@ -206,7 +208,7 @@ class Tracker():
                         print("Peer request COMPLETED")
                         self.db.finish_download(request["info_hash"], request["tracker_id"])
                 
-                self.db.update_status(request['info_hash'], tracker_id)
+                    self.db.update_status(request['info_hash'], tracker_id)
                 response.set_peers(self.db.get_peer_list(request["info_hash"]))
                     
         except Exception as e:
