@@ -65,9 +65,9 @@ class ServerRequester(threading.Thread):
                 
         sock.sendall(bcoding.bencode(builtRequest))
         
-        if not self.await_response:
-            sock.close()
-            return
+        # if not self.await_response:
+        #     sock.close()
+        #     return
         
         #? Receive response from tracker
         response = sock.recv(global_setting.TRACKER_RESPONSE_SIZE)
@@ -112,6 +112,9 @@ class ServerRegularAnnouncer(threading.Thread):
         startRequest.set_peer_id(self.peer_id)
         startRequest.set_port(self.peer_port)
         metainfos = mib.get_all(peer_setting.METAINFO_FILE_PATH)
+        
+        bitfield_parameters ={}
+        
         if len(metainfos) == 0:
             print("No metainfo found.")
         else: 
@@ -122,10 +125,30 @@ class ServerRegularAnnouncer(threading.Thread):
                 startRequest.set_port(self.peer_port)
                 
                 startRequest.set_uploaded(0)
+                startRequest.set_downloaded(0)
                 
                 #TODO Change after local file mapping implementation
-                startRequest.set_downloaded(0)
-                startRequest.set_left(0)
+                pieces = metainfo['info']['pieces']
+                pieceLength = metainfo['info']['piece length']
+                
+                if (len(metainfo['info']['files']) == 0):
+                    piececount = math.ceil(metainfo['info']['length'] / pieceLength)
+                else:
+                    piececount = math.ceil(sum([file['length'] for file in metainfo['info']['files']]) / pieceLength)
+                filePath = os.path.join('./',peer_setting.REPO_FILE_PATH, info_hash)
+                
+                bitfield_parameters[info_hash] = {
+                    'pieces': pieces,
+                    'piececount': piececount,
+                    'pieceLength': pieceLength,
+                    'filePath': filePath
+                }
+                
+                bitfield = pwp.generate_bitfield(pieces, piececount, pieceLength, filePath)
+
+                left = bitfield.count(0) * pieceLength
+                
+                startRequest.set_left(left)
                 
                 startRequest.set_event('started')
                 startRequest.set_tracker_id(None)       
@@ -162,6 +185,15 @@ class ServerRegularAnnouncer(threading.Thread):
                 
                 regularRequest.set_info_hash(info_hash)
                 regularRequest.set_port(self.peer_port)
+                
+                bitfield_params = bitfield_parameters[info_hash]
+                
+                bitfield = pwp.generate_bitfield(bitfield_params['pieces'], bitfield_params['piececount'], bitfield_params['pieceLength'], bitfield_params['filePath'])
+                
+                left = bitfield.count(0) * bitfield_params['pieceLength']
+                
+                uploaded = self.server.stat[info_hash]['uploaded']
+                downloaded = self.server.stat[info_hash]['downloaded']
                 
                 #TODO Change after local file mapping implementation
                 regularRequest.set_uploaded(0)
@@ -284,12 +316,15 @@ class ServerUploader(threading.Thread):
                         file_read += bytes(pwp.get_data_from_path(file))
                     
                     block = bytes(file_read[index * pieceLength + begin : index * pieceLength + begin + length])
-                                        
+                    
+                    
                     response = pwp.piece(index, begin, block)
                     
                     print('Piece response')
                     
                     self.sock.sendall(bcoding.bencode(response))
+                    
+                    self.server.stat[info_hash]['uploaded'] += length
                 
                 elif (request['type'] == pwp.Type.KEEP_ALIVE):
                     pass
@@ -337,6 +372,9 @@ class Server():
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serverSocket.bind((self.ip, self.port))
         self.serverSocket.settimeout(peer_setting.PEER_SERVER_TIMEOUT)
+        
+        # Format stat[info_hash] = {'uploaded': 0, 'downloaded': 0, 'left': 0}
+        self.stat = {}
         
         print("Listening on: {}:{}".format(self.ip, self.port))
         

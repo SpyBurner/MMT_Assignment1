@@ -237,7 +237,7 @@ class ClientPieceRequester(threading.Thread):
             f.write(block)
             
         file_lock.release()
-            
+        
         # except Exception as e:
         #     # ? Only the exception where the last piece is not the same size as the rest is caught here
         #     print(f"Error in ClientPieceRequester: {e}")
