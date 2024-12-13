@@ -65,9 +65,9 @@ class ServerRequester(threading.Thread):
                 
         sock.sendall(bcoding.bencode(builtRequest))
         
-        if not self.await_response:
-            sock.close()
-            return
+        # if not self.await_response:
+        #     sock.close()
+        #     return
         
         #? Receive response from tracker
         response = sock.recv(global_setting.TRACKER_RESPONSE_SIZE)
