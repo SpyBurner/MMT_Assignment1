@@ -24,9 +24,20 @@ class TrackerDB():
     def add(self, info_hash, peer_id, ip, port, tracker_id, seeder=False):
         db_lock.acquire()
         
+        try:
+            print("Swarm: ", self.swarm[info_hash])
+            print("Not in swarm: ", info_hash not in self.swarm)
+        except:
+            pass
+ 
         if info_hash not in self.swarm:
             self.swarm[info_hash] = {}
-              
+        try:
+            print("Swarm: ", self.swarm[info_hash])
+            print("Not in swarm: ", info_hash not in self.swarm)
+        except:
+            pass
+
         newPeer = {
             'peer_id': peer_id,
             'ip': ip,
