@@ -6,7 +6,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 import global_setting
 import bcoding
-from Metainfo import MetainfoBuilder as mib
 
 #? Get all metainfo files in the directory, transform to dictionary, and return all
 def get_all(metainfoPath):

@@ -82,7 +82,12 @@ class TrackerDB():
                     
     def generate_tracker_id(self):
         return secrets.token_hex(16)
-    
+
+class TrackerGlobalDB():
+    def __init__(self):
+        # Format peers[(ip, port)]
+        self.peers = {}
+
 class Tracker():
     def __init__(self, port):
         self.db = TrackerDB()
@@ -184,10 +189,14 @@ class Tracker():
         loop_thread.start()
         
         while self.is_running:
-            exit_command = input("Type 'exit' to stop the server: ")
-            if exit_command == 'exit':
+            command = input("Type 'exit' to stop the server, 'stat' to show stats, 'list' to list files: ")
+            if command == 'exit':
                 self.stop()
                 break
+            elif command == 'stat':
+                self.showStat()
+            elif command == 'list':
+                self.showList()
             
         print("[STOPPED] Server stopped.")
     
@@ -199,15 +208,31 @@ class Tracker():
             s.close()
         self.server_socket.close()
     
+    def showStatHandler(self):
+        print("[Tracker Stats]")
+        
+    
+    def showStat(self):
+        stat_thread = threading.Thread(target=self.showStatHandler)
+        stat_thread.start()
+    
+    def showListHandler(self):
+        print("[Tracker Files]")
+        
+        for key, value in self.db.swarm.items():
+            print(f"[Info Hash]: {key}")
+            for peer in value.values():
+                print(f"Peer ID: {peer['peer_id']}, IP: {peer['ip']}, Port: {peer['port']}, Seeder: {peer['seeder']}")
+            print()
+        
+    
+    def showList(self):
+        list_thread = threading.Thread(target=self.showListHandler)
+        list_thread.start()
+    
 def start():
     tracker = Tracker(TRACKER_DEFAULT_PORT)
     tracker.start()
-
-def stat(self):
-    print("Tracker Stats")
-        
-def list(self):
-    print("List Files in Tracker")
     
 def get_host_default_interface_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

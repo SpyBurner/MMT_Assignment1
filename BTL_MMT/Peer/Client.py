@@ -178,7 +178,7 @@ class ClientKeepAlive(threading.Thread):
 class ClientPieceRequester(threading.Thread):
     def __init__(self, ip, port, index, begin, length, filePath, info_hash):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
+        self.sock.settimeout(peer_setting.PEER_CLIENT_DOWNLOAD_TIMEOUT)
         self.sock.connect((ip, port))
         
         self.info_hash = info_hash
@@ -192,7 +192,6 @@ class ClientPieceRequester(threading.Thread):
     def run(self):
         #? Request a piece and write to file on sucess
         print(f"Requesting piece {self.index} from peer " + self.sock.getpeername()[0])
-        self.sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
         # try:
             # send handshake
         self.sock.sendall(bcoding.bencode(pwp.handshake(self.info_hash, self.begin)))
@@ -407,7 +406,7 @@ class ClientDownloader(threading.Thread):
 
                     # Send handshake
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
+                    sock.settimeout(peer_setting.PEER_CLIENT_UPLOAD_TIMEOUT)
                     sock.connect((peer['ip'], peer['port']))
                     
                     handshake = pwp.handshake(info_hash, Server.get_server().peerID)
@@ -563,7 +562,17 @@ class ClientLister(threading.Thread):
                 info_hash = hashlib.sha1(bcoding.bencode(metainfo['info'])).hexdigest()       
                 name = metainfo['info']['name']
                 piece_length = metainfo['info']['piece length']
-                piece_count = math.ceil(metainfo['info']['length'] / piece_length)
+
+                # print(metainfo['info']['files'])
+
+                if (len(metainfo['info']['files']) == None):
+                    piece_count = math.ceil(metainfo['info']['length'] / piece_length)
+                else:
+                    totalLength = 0
+                    for file in metainfo['info']['files']:
+                        totalLength += file['length']
+                    piece_count = math.ceil(totalLength / piece_length)
+
                 print("Name: ", name, " Info_hash: ", info_hash, " Piece length: ", piece_length, " Piece count: ", piece_count)
 
 #! Create the right type of thread and start it.

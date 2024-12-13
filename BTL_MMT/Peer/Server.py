@@ -185,7 +185,7 @@ class ServerRegularAnnouncer(threading.Thread):
                     requester.start()
                   
 class ServerUploader(threading.Thread):
-    def __init__(self, server, sock, addr, timeout=peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT):
+    def __init__(self, server, sock, addr, timeout=peer_setting.PEER_CLIENT_UPLOAD_TIMEOUT):
         threading.Thread.__init__(self, daemon=True)
         self.server = server
         self.sock = sock
@@ -317,7 +317,7 @@ class ServerConnectionLoopHandler(threading.Thread):
             try:
                 sock, addr = self.server.serverSocket.accept()
                 print("Accepted connection from: " + addr[0] + ":" + str(addr[1]))
-                uploader = ServerUploader(self.server, sock, addr, peer_setting.PEER_CLIENT_CONNECTION_TIMEOUT)
+                uploader = ServerUploader(self.server, sock, addr, peer_setting.PEER_CLIENT_UPLOAD_TIMEOUT)
                 uploader.start()
             except socket.timeout:
                 pass
